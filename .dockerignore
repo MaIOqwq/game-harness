@@ -1,0 +1,26 @@
+# 本机跑过才会有的东西，一律不进镜像
+# 注意：`_syscheck/` 不在这一列 —— 它是**随包的离线自检**（`python -m harness.test` 跑的那批），
+# 是产品的一部分；排掉的话容器里就自测不了了（实测：排掉后 42 项全 SKIP）。
+.venv/
+logs/
+out/
+**/__pycache__/
+**/*.pyc
+
+# 记忆库与流水：这是「上一台机器的数据」，镜像里只带机制、不带数据（首次启动自己建空库）
+harness/data/
+
+# 爬虫整个目录都排掉 —— 它是两个**独立仓库**，镜像里那份由 Dockerfile 自己 clone 下来。
+# 本机这份 crawlers/ 可能带着登录态（bili 的 browser_data/、NGA config.json 里的 cookie），
+# 跟着构建上下文进来就漏了。整目录排除最省心，也免得 COPY 覆盖掉 clone 的那份。
+crawlers/
+
+# 本机配置（可能含密钥）
+config.bat
+.env
+
+# 页面「设置」写出来的三份本机配置：都生成在包目录旁边，内容是这台机器的绝对路径
+# （secrets.json 还可能是明文密钥）。打进镜像别人的容器会指向不存在的目录。
+settings.json
+secrets.json
+mcp_servers.json

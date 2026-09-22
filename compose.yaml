@@ -1,0 +1,59 @@
+# 一条命令把整套起起来：
+#     docker compose up -d
+# 起来后开 http://127.0.0.1:8780
+#
+# 停：docker compose down（卷留着，登录态和记忆库都还在）
+# 连卷一起清：docker compose down -v
+
+services:
+  harness:
+    build:
+      context: .
+      args:
+        # 构建时要 clone 两个爬虫仓库。国内直连 github 常被断，Dockerfile 里已内置
+        # 「先直连、失败走镜像」；想换镜像或走自己的代理，在 .env 里写一行覆盖。
+        GITHUB_MIRROR: "${GITHUB_MIRROR:-https://ghfast.top/}"
+    image: game-harness:latest
+    container_name: game-harness
+    ports:
+      - "8780:8780"
+
+    # 两个爬虫各自要拉一份 Chromium。默认 64MB 的共享内存不够，长跑会崩。
+    shm_size: "2gb"
+
+    environment:
+      # 必填，没有它问不出答案。在仓库根目录建一个 .env 写 DEEPSEEK_API_KEY=sk-xxx
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      # NGA 的配置（含登录 cookie）指到卷上，重建容器不掉登录
+      NGA_CONFIG: "/data/nga_config.json"
+
+    # 包内那份 NGA 配置是空模板（cookies 为空），首次启动把它种到卷上。
+    # 不种的话 NGA 服务找不到 config.json 会直接退出。
+    command:
+      - sh
+      - -c
+      - |
+        [ -f /data/nga_config.json ] || cp /app/crawlers/nga/config.json /data/nga_config.json
+        # 上一次容器留下的 Chrome 单例锁里写着**旧容器的主机名**。Chrome 一看主机名对不上,就判成
+        # 「另一台机器正在用这个用户目录」直接拒绝启动 —— 重建容器后 bilibili 必挂(实测)。
+        # 容器刚起时这个用户目录不可能有活着的 Chrome,清掉是安全的。
+        # (NGA 不受影响:它的浏览器用户目录是 /tmp 下的临时目录,不跨容器留。)
+        rm -f /app/crawlers/bili/browser_data/*/Singleton* 2>/dev/null || true
+        exec python -u -m harness.webapp --port 8780 --host 0.0.0.0
+
+    volumes:
+      # 记忆库（sqlite）与每题流水
+      - harness-data:/app/harness/data
+      # bili 的登录态存在浏览器用户目录里，不挂卷重建容器就得重扫码
+      - bili-login:/app/crawlers/bili/browser_data
+      # NGA 的 config.json（扫码登录会把 cookie 写回这里）
+      - nga-config:/data
+      - harness-logs:/app/logs
+
+    restart: unless-stopped
+
+volumes:
+  harness-data:
+  bili-login:
+  nga-config:
+  harness-logs:

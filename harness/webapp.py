@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import threading
 import time
 import traceback
@@ -925,6 +926,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
     _startup_sweep()                   # 垃圾桶里过期的先清掉(见 forget.sweep)
     supervisor.start_reaper()          # 闲置的爬虫由它定期收掉
+    # `docker compose down` 发的是 SIGTERM, 不是 SIGINT —— 不给它挂个 handler 的话
+    # serve_forever() 不让位, 底下那个 finally 永远跑不到, 爬虫的浏览器就被 SIGKILL 掉,
+    # 用户目录里留下 SingletonLock(宿主名+pid), 下次换容器(宿主名变了)直接被 Chrome 判成
+    # "另一台机器正在用", bilibili 起不来。转成 KeyboardInterrupt 走原有那条收尾路。
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
     srv = _QuietServer((args.host, args.port), Handler)
     print("[web] harness 网页后端 listening http://%s:%d" % (args.host, args.port), flush=True)
     if supervisor.enabled():

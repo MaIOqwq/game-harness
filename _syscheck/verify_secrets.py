@@ -9,8 +9,8 @@ bili 的整个浏览器 profile(`crawlers/bili/browser_data/`)、NGA 的 `config
 只扫数据文件里"键 + 长值"那种形状, 不裸扫关键字: 源码里本来就该出现 SESSDATA 这个词
 (bili 的登录模块要读它), 裸扫会把正经代码判成违规, 那样的自检没人会留着。
 
-**它体检的是"要发出去的那棵树", 不是部署机。** 部署机上爬虫不在树内(在 <DEPLOY_ROOT>/nga-demo、
-<DEPLOY_ROOT>/bili-demo)、`harness.env` 里就住着密钥 —— 那两条在那儿是**正常的**, 照红只会让人习惯性
+**它体检的是"要发出去的那棵树", 不是部署机。** 部署机(如 111)上爬虫不在树内(在 /opt/nga-demo、
+/opt/bili-demo)、`harness.env` 里就住着密钥 —— 那两条在那儿是**正常的**, 照红只会让人习惯性
 忽略红灯。所以这两处按"不适用"跳过并印出理由, 不算通过也不算失败。真正兜住"别把机器自己的
 配置打进包"的是打包那一步(make_dist.py 的 DROP_FILES 已含 harness.env/.env/settings.json/
 secrets.json/mcp_servers.json)。
@@ -85,12 +85,18 @@ def skip(name, why):
 print("=== 1. 凭证文件一个都不许在 ===")
 for rel in CRED_PATHS:
     p = os.path.join(ROOT, rel.replace("/", os.sep))
+    if os.path.ismount(p):
+        # 挂载点 = 容器卷。跑在容器里时, bili 的浏览器目录挂了个卷(登录态要跨重建保留),
+        # 挂载点那层是 Docker 建的、里头是**这台机器跑出来的运行期数据**, 不是"包里带的登录数据"。
+        # 不适用(既不算通过也不算失败) —— 跟上面"部署机"那两处同理, 别让它变成习惯性忽略的红灯。
+        skip("1. 不存在 %s" % rel, "是挂载点(容器卷)，里面是运行期数据")
+        continue
     chk("1. 不存在 %s" % rel, not os.path.exists(p), p)
 
 print("=== 2. NGA 的 config.json: 必须留着(不然服务起不来)、必须掏空 ===")
 _cfg = os.path.join(ROOT, "crawlers", "nga", "config.json")
 if not os.path.isdir(os.path.join(ROOT, "crawlers")):
-    # 部署机上爬虫不在树内(如 <DEPLOY_ROOT>/nga-demo、<DEPLOY_ROOT>/bili-demo) —— 整段不适用。
+    # 部署机上爬虫不在树内(111 上分别是 /opt/nga-demo、/opt/bili-demo) —— 整段不适用。
     skip("2. NGA config.json 掏空", "这棵树里没有 crawlers/: 爬虫不在树内(部署布局)")
 elif not os.path.exists(_cfg):
     chk("2. config.json 在(服务没它起不来)", False, _cfg)
