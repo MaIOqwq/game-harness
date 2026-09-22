@@ -25,6 +25,6 @@
 ## 记忆纪律（本项目的核心诉求）
 14. **长项目中间态不许只靠 claudecode 自带记忆**（MEMORY.md/压缩摘要，用户明确"用着太难受"）：里程碑/收尾/切换前把「当前任务 / 刚定决策 / 下一步 / 卡点」落 `docs/mem/HANDOFF.md`（现态）或 `PLAN.md §10`（决策日志）。（feedback-long-project-memory）
 15. 会话开始先读 HANDOFF 尾 + RECALL + PLAN §10 尾回灌，别凭压缩摘要猜。
-16. 未经明确允许不 git push；LoRA/训练/大规模运行须用户明确指令，禁止自动跑。
+16. 未经明确允许不 git push（公开仓 game-harness 按需推）；LoRA/训练/大规模运行须用户明确指令，禁止自动跑。
 
 > ⚠ 两条记忆系统边界：①本仓库记忆 = HANDOFF/PLAN/RECALL/topics + harness scope DB（会话级 L1/L3）；②<LOCAL_WORKSPACE> 桥工作区的向量记忆库（每轮 add_turn）由该处 CLAUDE.md 单独生效。两套别混。
