@@ -1,0 +1,42 @@
+{
+  "_说明": "cookies 填你 NGA 账号的登录 cookie(服务会拿它登录; 通常是 ngaPassportUid / ngaPassportCid 这类字段); login_marker 填你的 NGA 用户名 —— 服务靠首页里出没出现这个字串判断登录态, 留空则一律判为未登录, 换账号必须改。",
+  "cookies": {},
+  "login_marker": "",
+  "keywords": [
+    "手机游戏",
+    "王者荣耀",
+    "和平精英",
+    "原神",
+    "崩坏星穹铁道",
+    "绝区零",
+    "明日方舟",
+    "崩坏三",
+    "天涯明月刀",
+    "无限暖暖",
+    "英雄联盟手游",
+    "金铲铲之战",
+    "明日方舟终末地",
+    "三角洲行动",
+    "火影忍者手游",
+    "燕云十六声",
+    "逆水寒手游",
+    "永劫无间手游",
+    "光遇",
+    "第五人格",
+    "阴阳师",
+    "鸣潮"
+  ],
+  "settings": {
+    "fid": "",
+    "page": 1,
+    "delay_min": 1,
+    "delay_max": 3,
+    "output_dir": "./output"
+  },
+  "kafka": {
+    "_说明": "本部署不用 Kafka(出口只有 out/ 下的 json), 关着。开了也没用: 还缺 confluent-kafka 依赖。",
+    "enabled": false,
+    "bootstrap_servers": "",
+    "topic": "crawler_data"
+  }
+}

@@ -1,0 +1,15 @@
+[
+  {
+    "name": "自己",
+    "transport": "stdio",
+    "enabled": true,
+    "env": {},
+    "headers": {},
+    "command": [
+      ".venv\\Scripts\\python.exe",
+      "-m",
+      "harness.mcp"
+    ],
+    "cwd": "."
+  }
+]

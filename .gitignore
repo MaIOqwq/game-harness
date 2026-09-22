@@ -1,0 +1,29 @@
+# 运行时数据 —— 不进仓库
+harness/data/
+logs/
+out/
+_scratch/
+
+# 凭证与登录态 —— 绝不进仓库
+harness.env
+.env
+*.token
+.tool_token
+.nga_token
+.bili_token
+.nlp_token
+browser_data/
+*.flag
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

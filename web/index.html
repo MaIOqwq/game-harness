@@ -1,0 +1,3267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>游戏社区问答</title>
+<!-- 图表库走本地文件: 用户断网/加载不出来时, 从公网 CDN 取图会让所有图一起消失。
+     装好包就该能画图, 所以 vendor/ 必须随包发。真缺了才退回公网(下面那行), 兜个底不当依赖。 -->
+<script src="vendor/echarts.min.js"></script>
+<script src="vendor/echarts-wordcloud.min.js"></script>
+<script>window.echarts||document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"><\/script>');</script>
+<style>
+:root{
+  --bg:#f5f7fa; --panel:#ffffff; --panel2:#f2f5f9; --line:#e3e8ef;
+  --text:#1f2430; --muted:#667085; --faint:#98a2b3;
+  --accent:#2563eb; --accent2:#7c3aed;
+  --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font:14px/1.7 "PingFang SC","Microsoft YaHei",-apple-system,Segoe UI,sans-serif;
+  display:flex; flex-direction:column;
+}
+button{font:inherit; color:inherit; cursor:pointer; background:none; border:none}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#d0d7e2;border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#bcc5d4}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- 通用小件 ---------- */
+.ico{
+  width:32px; height:32px; flex:0 0 auto; border-radius:8px; border:1px solid var(--line);
+  background:var(--panel); font-size:15px; line-height:1; color:var(--muted);
+  display:flex; align-items:center; justify-content:center;
+}
+.ico:hover{border-color:#c7d0dd; color:var(--text); background:var(--panel2)}
+.spacer{flex:1}
+
+/* ---------- 侧栏顶：品牌（原顶栏已撤 09-12；不再留图标位 —— 产品不带 logo） ---------- */
+.brand{display:flex; align-items:center; gap:9px; padding:12px 12px 2px}
+.brand b{font-size:14px; font-weight:600; letter-spacing:.2px}
+
+/* ---------- 灯 ---------- */
+.cgroup{display:flex; gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.lamp{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted)}
+.lrow{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid #eef1f6}
+.lrow:last-child{border-bottom:none}
+.lrow .who{font-size:13px; color:var(--text); min-width:64px}
+.dot.ok{background:var(--ok); box-shadow:0 0 0 3px #16a34a1f}
+.dot.warn{background:var(--warn); box-shadow:0 0 0 3px #d977061f}
+.dot.bad{background:var(--bad); box-shadow:0 0 0 3px #dc26261f}
+/* 几种"此刻正忙"(都不是故障): 冷却中=风控退避,倒计时走完自好; 正在使用=有题在爬;
+   排队中=公用时前面还有人占着; 刚爬过=要守平台最小间距(带倒计时) */
+.dot.cool{background:var(--warn); box-shadow:0 0 0 3px #d977061f}
+.dot.busy{background:var(--accent); box-shadow:0 0 0 3px #2563eb1f; animation:busyPulse 1.2s ease-in-out infinite}
+.dot.queue{background:var(--accent); box-shadow:0 0 0 3px #2563eb1f; animation:busyPulse 1.2s ease-in-out infinite}
+.dot.gap{background:var(--warn); box-shadow:0 0 0 3px #d977061f}
+@keyframes busyPulse{0%,100%{opacity:1}50%{opacity:.3}}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- 布局 ---------- */
+.app{display:flex; flex:1; min-height:0}
+body.collapsed aside{display:none}
+#expandBtn{display:none; position:fixed; left:12px; top:12px; z-index:40}
+body.collapsed #expandBtn{display:flex}
+
+/* ---------- 侧栏（仿 DeepSeek 会话栏） ---------- */
+aside{
+  width:240px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line);
+  display:flex; flex-direction:column; min-height:0;
+}
+aside .top{padding:4px 12px 10px}
+.btn{
+  width:100%; padding:8px 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--panel); font-size:13px; text-align:left;
+}
+.btn:hover{border-color:#c7d0dd; background:var(--panel2)}
+/* 「开启新对话」= 白底圆角胶囊 + 深色 ⊕（照参考图） */
+.btn.newchat{
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  border-radius:22px; font-size:13.5px; color:var(--text); text-align:center;
+  box-shadow:0 1px 2px #1018280a;
+}
+.btn.newchat i{
+  width:17px; height:17px; flex:0 0 auto; border-radius:50%; font-style:normal;
+  background:var(--text); color:var(--panel); font-size:12px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+}
+.sess{list-style:none; margin:0; padding:0 8px 10px; overflow:auto; flex:1}
+.sess .grp{font-size:11.5px; color:var(--faint); padding:11px 10px 4px}
+/* 一行 = 标题 + 一个「⋯」管理键(置顶/导出为 PDF/删除)。按钮**常显**、只是压暗着: 藏成"悬停才出来"的话,
+   触屏没有悬停这一步, 而且用户会以为这里压根没有管理入口(真被这么问过)。 */
+.sess li.row{
+  display:flex; align-items:center; gap:4px;
+  padding:8px 6px 8px 10px; border-radius:8px; margin-bottom:2px; font-size:13px;
+  color:var(--text); cursor:pointer; border:1px solid transparent;
+}
+.sess li.row .t{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* 搁着的题数: 一个不打眼的小圆点, 只在这条对话真有暂停题时出现 */
+.sess li.row .ptag{
+  flex:0 0 auto; min-width:16px; height:16px; padding:0 4px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; line-height:1; background:#fef3c7; color:#92400e; border:1px solid #fcd34d;
+}
+.sess li.row:hover{background:var(--panel2)}
+.sess li.row.on{background:#eff4ff; border-color:#cddcff}
+.sess li.row .rowmore{
+  flex:0 0 auto; width:20px; height:20px; border-radius:6px; font-size:13px; line-height:1;
+  color:var(--faint); opacity:.6;
+  transition:opacity .15s ease, background-color .18s ease, color .18s ease;
+}
+.sess li.row .rowmore:hover, .sess li.row .rowmore[aria-expanded="true"]{
+  opacity:1; color:var(--text); background:#e4e9f2;
+}
+
+/* 会话行的「⋯」菜单: 浮在上面(位置由 JS 按那个按钮算), 不挤动列表 */
+.smenu{
+  position:fixed; z-index:70; display:none; min-width:132px; padding:5px;
+  background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 8px 24px #10182824;
+}
+.smenu.show{display:block}
+.smenu button{
+  display:block; width:100%; text-align:left; padding:7px 10px; border-radius:7px;
+  font-size:12.5px; color:var(--text); white-space:nowrap;
+}
+.smenu button:hover{background:var(--panel2)}
+.smenu button.danger{color:var(--bad)}
+.smenu button.danger:hover{background:#fef2f2}
+.btn.danger{color:var(--bad); border-color:#f2cccc}
+.btn.danger:hover{background:#fef2f2}
+
+/* 侧栏底：爬虫状态 + 设置（照参考图，会话栏下方那一块） */
+.sbot{flex:0 0 auto; border-top:1px solid var(--line); padding:8px 10px 10px}
+.srow{
+  display:flex; align-items:center; gap:8px; padding:7px 9px; margin-bottom:2px;
+  border-radius:8px; border:1px solid transparent; font-size:12.5px; color:var(--muted); cursor:pointer;
+}
+.srow:hover{background:var(--panel2); border-color:var(--line)}
+.srow b{font-weight:500; color:var(--text); font-size:12.5px}
+.srow span{margin-left:auto; font-size:11.5px; color:var(--faint); white-space:nowrap}
+.srow.bad b{color:var(--bad)} .srow.bad span{color:var(--bad)}
+.srow.warn span{color:var(--warn)}
+.srow.cool span{color:var(--warn)}
+.srow.busy span{color:var(--accent)}
+.srow.queue span{color:var(--accent)}
+.srow.gap span{color:var(--warn)}
+.srow.off b{color:var(--faint)} .srow.off span{color:var(--faint)}
+.sbtn{
+  width:100%; margin-top:6px; display:flex; align-items:center; gap:7px;
+  padding:7px 9px; border-radius:8px; border:1px solid var(--line); background:var(--panel);
+  font-size:12.5px; color:var(--muted); text-align:left;
+}
+.sbtn:hover{background:var(--panel2); border-color:#c7d0dd; color:var(--text)}
+.sbtn i{font-style:normal; color:var(--faint); line-height:1}
+
+/* ---------- 聊天 ---------- */
+main{flex:1; display:flex; flex-direction:column; min-width:0; min-height:0}
+.stream{flex:1; overflow:auto; padding:22px 26px 8px}
+.wrap{max-width:900px; margin:0 auto}
+
+.msg{margin-bottom:22px}
+/* 问句气泡靠右：列向 flex + 两端对齐到同一条右边线（与下方答案卡右缘齐） */
+.q{display:flex; flex-direction:column; align-items:flex-end; gap:6px}
+.q .bub{
+  max-width:78%; background:var(--accent); color:#fff;
+  padding:10px 14px; border-radius:12px 12px 3px 12px; font-size:14px;
+}
+.q .meta{font-size:11px; color:var(--faint); display:flex; gap:10px; justify-content:flex-end}
+
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); overflow:hidden;
+      box-shadow:0 1px 2px #1018280a}
+.card .hd{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:9px 14px;
+  border-bottom:1px solid var(--line); background:var(--panel2); font-size:12px; color:var(--muted);
+}
+.card .bd{padding:14px}
+
+.badge{font-size:11px; padding:2px 8px; border-radius:20px; border:1px solid var(--line); color:var(--muted); background:var(--panel)}
+.badge.ok{color:#15803d; border-color:#bce8c8; background:#f0fdf4}
+.badge.warn{color:#b45309; border-color:#fbe3ad; background:#fffbeb}
+.badge.info{color:#1d4ed8; border-color:#c7dbff; background:#eff6ff}
+/* 每条回答的 token 消耗: 单独一个色, 免得混在"引用 24 条"那排里看漏 */
+.badge.toks{color:#0f766e; border-color:#b6e3dc; background:#f0fdfa}
+.badge.toks b{font-variant-numeric:tabular-nums}
+
+.concl{
+  border-left:3px solid var(--accent2); background:#f7f5ff;
+  padding:11px 14px; border-radius:0 8px 8px 0; margin-bottom:16px;
+}
+.concl .t{font-size:11px; color:var(--accent2); letter-spacing:1px; margin-bottom:4px; font-weight:600}
+.concl p{margin:0; font-size:14.5px; line-height:1.75}
+
+.ans h1{font-size:18px; margin:4px 0 12px}
+.ans h2{font-size:15px; margin:18px 0 8px; color:#344054; border-left:3px solid #d7dde8; padding-left:8px}
+.ans h3{font-size:14px; margin:14px 0 6px; color:#344054}
+.ans p{margin:8px 0; color:#344054}
+.ans ul{margin:6px 0; padding-left:20px}
+.ans li{margin:5px 0; color:#344054}
+.ans strong{color:#101828}
+/* 答案正文里的表格: 模型爱用「| 维度 | A | B |」这种对照表排权衡, 原样印出来就是一堆竖线和
+   一行 |---|---|, 用户看不懂(原话「这是表格？？？」)。排成真表格 —— 横向排不下就自己滚,
+   别把整页撑宽。 */
+.ans table.mdt{border-collapse:collapse; margin:10px 0; font-size:12.5px; display:block;
+               overflow-x:auto; max-width:100%}
+.ans table.mdt th,.ans table.mdt td{border:1px solid #e3e8ef; padding:5px 10px; vertical-align:top}
+.ans table.mdt th{background:#f8fafc; color:#344054; font-weight:600; text-align:left;
+                  white-space:nowrap}
+.ans table.mdt td{color:#344054}
+/* 模型拿 --- 当分节线用; 原样印出来正文里就横着一串减号(跟表格同一种毛病)。排成分隔线。 */
+.ans hr{border:0; border-top:1px solid #e3e8ef; margin:16px 0}
+
+.cite{
+  display:inline-block; font-size:11px; padding:0 5px; margin:0 1px; border-radius:5px;
+  background:#eff6ff; color:#1d4ed8; border:1px solid #c7dbff; cursor:pointer;
+  font-variant-numeric:tabular-nums; vertical-align:1px;
+}
+.cite:hover{background:#dbeafe; color:#1e40af}
+
+/* ---------- 图 ---------- */
+.charts{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px}
+.chart{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+.chart .ct{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line)}
+.chart .ct b{font-size:13px; font-weight:600}
+.chart .cap{padding:7px 12px; font-size:11px; color:var(--faint); border-top:1px dashed var(--line); line-height:1.55}
+.chart .plot{height:220px}
+.chart.wide{grid-column:1 / -1}
+.chart .plot.wide{height:200px}
+.chart .plot.tall{height:270px}
+/* 补充图表收进折叠块: 每题底下挂十来张图会把答案淹掉, 也拖慢长会话 —— 展开时才画。 */
+details.more{margin-top:12px; background:var(--panel); border:1px solid var(--line); border-radius:var(--r)}
+details.more>summary{cursor:pointer; padding:9px 12px; font-size:12.5px; color:var(--muted); user-select:none; list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:"▸ "; color:var(--faint)}
+details.more[open]>summary::before{content:"▾ "}
+details.more>summary:hover{color:var(--text)}
+details.more .charts{margin:2px 12px 12px}
+.nofig{
+  margin-top:16px; padding:12px 14px; border:1px dashed var(--line); border-radius:var(--r);
+  color:var(--muted); font-size:12.5px; background:#fafbfd;
+}
+.nofig b{color:var(--text)}
+
+/* ---------- 折叠块 ---------- */
+details{margin-top:14px; border:1px solid var(--line); border-radius:var(--r); background:var(--panel)}
+summary{padding:9px 14px; font-size:12.5px; color:var(--muted); cursor:pointer; list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸ "; color:var(--faint)}
+details[open] summary::before{content:"▾ "}
+details .inner{padding:4px 14px 14px}
+
+.ref{display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #eef1f6; font-size:12.5px}
+.ref:last-child{border-bottom:none}
+.ref .id{color:#1d4ed8; font-variant-numeric:tabular-nums; min-width:52px}
+.ref .tx{flex:1; min-width:0; cursor:pointer}
+.ref .tx b{font-weight:500; color:#344054; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ref .tx b:hover{color:var(--accent); text-decoration:underline}
+.ref .tx small{color:var(--faint)}
+/* 带字幕的那几条: 一行小字标出来, 免得用户只能靠点开才知道有没有 */
+.ref .sub{color:#6b21a8}
+.ref .pl{font-size:11px; padding:1px 7px; border-radius:5px; align-self:flex-start}
+.pl.NGA{background:#fef3c7; color:#92400e; border:1px solid #fbe3ad}
+.pl.bilibili{background:#f3e8ff; color:#6b21a8; border:1px solid #e9d5ff}
+.ref .st{font-size:11px; color:var(--faint); align-self:flex-start; min-width:56px; text-align:right}
+.refnav{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 0 2px; font-size:12px;
+        color:var(--faint)}
+.refnav button{padding:2px 9px; border:1px solid #d0d5dd; border-radius:6px; background:#fff;
+               color:#344054; font-size:12px; cursor:pointer}
+.refnav button:disabled{color:#98a2b3; background:#f2f4f7; cursor:default}
+.refnav .pg b{color:#1d4ed8}
+
+table.tr{width:100%; border-collapse:collapse; font-size:12px}
+table.tr th,table.tr td{padding:5px 8px; text-align:left; border-bottom:1px solid #eef1f6}
+table.tr th{color:var(--faint); font-weight:400}
+table.tr td{color:#344054; font-variant-numeric:tabular-nums}
+.nudge{color:#b45309}
+.kv{display:flex; flex-wrap:wrap; gap:16px; margin-top:10px; font-size:12px; color:var(--muted)}
+.kv b{color:var(--text); font-variant-numeric:tabular-nums}
+
+.acts{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; align-items:center}
+.acts button, .acts a{
+  font-size:12px; padding:5px 12px; border:1px solid var(--line); border-radius:7px; color:var(--muted);
+  background:var(--panel); text-decoration:none; cursor:pointer;
+}
+.acts button:hover, .acts a:hover{color:var(--text); border-color:#c7d0dd; background:var(--panel2)}
+.acts button.pdf{color:#1d4ed8; border-color:#c7dbff; background:#eff6ff}
+.acts button.pdf:hover{background:#dbeafe}
+.acts button[disabled]{opacity:.6; cursor:default}
+/* 「继续」是这张卡上的正事(接着爬到出答案), 「丢弃」是把它收掉 —— 主次要分开, 别让人手滑丢题。 */
+.acts button.go{color:#15803d; border-color:#bce8c8; background:#f0fdf4}
+.acts button.go:hover{background:#dcfce7}
+.acts button.ghost{color:var(--faint); background:transparent}
+
+/* ---------- 输入（照参考图：一个圆角盒子，档位/比例/状态都在盒内底栏） ---------- */
+.composer{flex:0 0 auto; background:transparent; padding:6px 26px 18px}
+.composer .box{
+  max-width:900px; margin:0 auto; background:var(--panel);
+  border:1px solid var(--line); border-radius:16px;
+  box-shadow:0 6px 22px #1018280f; padding:10px 12px 8px;
+}
+.composer textarea{
+  display:block; width:100%; resize:none; height:26px; max-height:160px;
+  padding:2px 4px; border:none; background:transparent; color:var(--text); font:inherit;
+}
+.composer textarea:focus{outline:none}
+.composer textarea::placeholder{color:var(--faint)}
+.cbar{display:flex; align-items:center; gap:7px; margin-top:8px; flex-wrap:wrap}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:12px; padding:5px 11px; border-radius:16px;
+  border:1px solid var(--line); background:var(--panel2); color:var(--muted);
+  white-space:nowrap;
+}
+.chip:hover{border-color:#c7d0dd; color:var(--text)}
+.chip.on{background:#eff6ff; border-color:#c7dbff; color:#1d4ed8; font-weight:600}
+
+/* 平台比例：按钮原地展开 —— 胶囊 → 更长的胶囊（不是弹窗）。
+   按钮上把「平台比例」四个字写全, 不用 ％ 之类的符号打哑谜; 当前档位用汉字写在滑杆右边。 */
+.morph{
+  display:flex; align-items:center; flex:0 0 auto;
+  height:32px; width:68px; border-radius:16px; overflow:hidden;
+  border:1px solid var(--line); background:var(--panel2);
+  transition:width .36s cubic-bezier(.22,.8,.2,1), background .28s, border-color .28s;
+}
+.morph:hover{border-color:#c7d0dd}
+.morph.open{width:min(392px,100%); background:#eff6ff; border-color:#c7dbff}
+/* 按钮的盒子**两种状态下都是"文字宽"**(收起态胶囊 68px 减去两边各 1px 边框 = 66px = 这个宽度)。
+   早先收起态写的是 flex:1 1 auto, 那它会撑满胶囊: 一点收起, 按钮盒子从 66px **瞬间**跳到
+   "分走一半富余宽度"(实测 392px 的胶囊里跳到 229px), 而那会儿背景还是蓝的 —— 看着就是收起时抖一下。
+   展开态本来就得是 flex:0 0 auto(否则它跟着拉长, 把滑杆和读数挤没), 索性两态统一。别改回 flex:1。 */
+.morphBtn{
+  flex:0 0 auto; height:32px; padding:0 10px; border-radius:16px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden;
+  transition:color .28s, background .28s;
+}
+.morph.open .morphBtn{color:#1d4ed8; background:#dbeafe}
+.morphBody{
+  display:flex; align-items:center; gap:9px; flex:1; min-width:0; padding-right:12px;
+  white-space:nowrap; opacity:0; transform:translateX(10px); pointer-events:none;
+  transition:opacity .18s ease, transform .36s cubic-bezier(.22,.8,.2,1);
+}
+.morph.open .morphBody{opacity:1; transform:none; pointer-events:auto; transition-delay:.09s,0s}
+.morphBody input[type=range]{flex:1; min-width:78px; accent-color:var(--accent)}
+/* 读数**定宽 + 右对齐**: 它字数是会变的("两平台均等" 5 字 ↔ "NGA 60 : bilibili 40" 20 字)。不定宽的话,
+   拖滑杆时它一会儿宽一会儿窄, 把 flex:1 的滑杆**顶着来回变宽变窄**, 手指底下的滑块就跟着左右跑 = 抖。
+   宽度按最长那句("NGA 95 : bilibili 5")留够, 右对齐让数字贴着滑杆那头不乱跳。 */
+.morphBody .rval{flex:0 0 auto; width:118px; text-align:right; font-size:11.5px; color:var(--muted); white-space:nowrap}
+/* 发送键吃掉所有富余空间: 它永远贴在这一栏的右端(左边那些档位/比例依次靠左) */
+.send{
+  margin-left:auto;
+  width:34px; height:34px; flex:0 0 auto; border-radius:50%;
+  background:var(--accent); color:#fff; font-size:16px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+}
+.send:hover{background:#1d4ed8}
+.send:disabled{background:#cdd5e0; cursor:not-allowed}
+/* 「提前停止」/「暂停」：只在有题在跑时露脸(平时完全不占位), 紧挨发送键右边 —— 发送键那会儿
+   是灰的禁用态, 几个挨在一起正好是"要么发、要么停"。
+   两枚分开是因为下场不一样: 「停止」这题就到此为止(拿已取到的证据出答案), 「暂停」是先搁着
+   (不出答案, 下次接着爬)。所以颜色也分开 —— 一枚收口、一枚挂起, 别让人以为按错了。
+   用 .show 切 display 而不用 hidden 属性: .send 那边是 display:flex 排字, 属性容易被别的规则盖掉。 */
+.stop,.pause{
+  width:34px; height:34px; flex:0 0 auto; border-radius:50%; display:none;
+  align-items:center; justify-content:center; line-height:1; font-size:12px;
+}
+.stop{background:#fee4e2; color:#b42318; border:1px solid #fda29b}
+.stop:hover{background:#fecdca}
+.pause{background:#fef3c7; color:#92400e; border:1px solid #fcd34d}
+.pause:hover{background:#fde68a}
+.stop:disabled,.pause:disabled{opacity:.55; cursor:not-allowed}
+.stop.show,.pause.show{display:flex}
+/* 这行注脚钉在**整页最下面**(不是贴着输入框): 上边距吃 auto, 空档全给它。 */
+.fine{max-width:900px; margin:auto auto 0; font-size:11px; color:var(--faint); text-align:center}
+.fine b{color:var(--muted)}
+
+/* ---------- 首次进入页：标题 + 输入框合成正中一竖列（照参考产品的姿态；没有图标、没有横幅） ----------
+   只在「这个对话里还一条都没问过、此刻也没有题在跑」时出现, 问出第一题它自己撤,
+   输入框随之落回底部常驻位。**居中的是这一整摞**(不是只把标题吊在半空、输入框还钉在底下)。 */
+.hero{display:none}
+body.empty main{justify-content:center}
+/* .fine 自己也吃 auto 上边距(它要钉在整页最下面), 而**只要有一个 auto 边距, justify-content 就被忽略**,
+   所以这摞的居中不能再靠 main 的 justify-content, 改由 .stream 的 auto 上边距分担 —— 两个 auto 平分空档,
+   视觉上仍是"标题+输入框一起居中、注脚在底下"。 */
+body.empty .stream{margin-top:auto; flex:0 0 auto; overflow:visible; padding:0 26px 4px}
+body.empty #wrap{display:none}
+body.empty .hero{display:flex; flex-direction:column; align-items:center; text-align:center;
+                 width:100%; max-width:640px; margin:0 auto}
+.hero h1{margin:0; font-size:26px; line-height:32px; font-weight:500; letter-spacing:.2px}
+.hero .eg{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:55px}
+.hero .eg button{
+  font-size:12.5px; padding:8px 14px; border-radius:16px; border:1px solid var(--line);
+  background:var(--panel); color:var(--muted); box-shadow:0 1px 2px #1018280a;
+}
+.hero .eg button:hover{border-color:#c7d0dd; color:var(--text); background:var(--panel2)}
+
+/* ---------- 浮层 ---------- */
+.modal{
+  position:fixed; inset:0; background:#10182873; display:none; align-items:center;
+  justify-content:center; z-index:50; padding:20px;
+}
+.modal.show{display:flex}
+.modal .box{background:var(--panel); border:1px solid var(--line); border-radius:12px;
+            width:min(480px,100%); overflow:hidden; box-shadow:0 18px 48px #10182826}
+.modal .box .hd{padding:14px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center}
+.modal .box .hd b{font-size:15px}
+.modal .box .bd{padding:18px; font-size:13.5px; color:#344054}
+.modal .box .ft{padding:12px 18px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:8px}
+.modal ol{padding-left:20px} .modal li{margin:6px 0}
+.modal code{background:var(--panel2); border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:12px}
+.qr{
+  width:260px;height:260px;margin:14px auto;background:#fff;border-radius:8px;
+  border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;padding:8px;
+}
+/* 平台给的码本身很小(B站 140px、NGA 245px), 放大时用 pixelated 保持边缘锐利, 别糊成一团扫不出来 */
+.qr img{max-width:100%;max-height:100%;display:block;image-rendering:pixelated}
+.warnbox{background:#fffbeb; border:1px solid #fbe3ad; color:#8a5a08; padding:10px 12px; border-radius:8px; font-size:12.5px; margin:12px 0}
+.dangerbox{background:#fef2f2; border:1px solid #f5cccc; color:#9a2b2b; padding:10px 12px; border-radius:8px; font-size:12.5px; margin:12px 0}
+.modal input[type=text]{
+  width:100%; padding:9px 11px; border-radius:8px; background:var(--panel2);
+  border:1px solid var(--line); color:var(--text); font:inherit; margin-top:8px;
+}
+.modal input[type=text]:focus{outline:none; border-color:var(--accent); background:var(--panel)}
+.btn.ghost{border:1px solid var(--line); background:var(--panel); padding:7px 14px; border-radius:8px; font-size:13px}
+.btn.ghost:hover{background:var(--panel2)}
+.btn.solid{background:var(--bad); color:#fff; padding:7px 14px; border-radius:8px; font-size:13px; border:none}
+.btn.solid:disabled{opacity:.4; cursor:not-allowed}
+.btn.solid.blue{background:var(--accent)}
+.modal .btn{width:auto; white-space:nowrap}
+
+/* ---------- 设置面板（清单由后端 /api/settings 给，见 loadSettings）
+   排法照常用软件那套「设置」：
+     顶上一排 = 有哪些类（点一下跳到那一类）
+     每一类一段：左栏写这一类的名字，右栏是这一类下面的每一条
+   条目里 名称/来源/说明 在上，要填的东西跟在下边（左对齐）—— 不是甩到最右边去。 */
+#mSettings .bd{display:flex; flex-direction:column; overflow:hidden}
+#settingsBody{display:flex; flex-direction:column; min-height:0; flex:1}
+.settabs{display:flex; flex-wrap:wrap; gap:2px; flex:0 0 auto;
+         border-bottom:1px solid var(--line); margin-bottom:12px}
+.settabs button{background:none; border:none; cursor:pointer; padding:7px 11px;
+                font-size:12.5px; color:var(--muted); border-radius:8px 8px 0 0}
+.settabs button:hover{color:var(--text); background:var(--panel2)}
+.settabs button.on{color:var(--accent); font-weight:600; box-shadow:inset 0 -2px 0 var(--accent)}
+.setscroll{flex:1; min-height:0; overflow:auto; padding-right:6px}
+.setsec{display:grid; grid-template-columns:104px 1fr; gap:14px; margin:0 0 16px}
+.setsec:last-child{margin:0 0 2px}
+.setrail{align-self:start; padding-top:9px; font-size:12.5px; font-weight:600;
+         color:var(--muted); letter-spacing:.3px}
+.setbody{padding:0}
+.setitem{padding:10px 0; border-top:1px solid var(--line)}
+.setbody .setitem:first-child{border-top:none}
+.settit{font-size:13px; color:#344054}
+.settit .src{display:inline-block; font-size:10.5px; color:var(--faint); border:1px solid var(--line);
+             border-radius:10px; padding:0 6px; margin-left:6px; white-space:nowrap}
+.settit .restart{display:inline-block; font-size:10.5px; color:#b45309; border:1px solid #fbe3ad;
+                 background:#fffbeb; border-radius:10px; padding:0 6px; margin-left:5px; white-space:nowrap}
+.sethint{display:block; font-size:11.5px; color:var(--faint); margin-top:3px; line-height:1.65}
+.setctl{margin-top:7px; display:flex; align-items:center; gap:8px}
+.modal .setctl input[type=text], .modal .setctl input[type=number]{
+  width:176px; margin-top:0; padding:6px 9px; border-radius:8px; background:var(--panel2);
+  border:1px solid var(--line); color:var(--text); font:inherit; font-size:12.5px;
+}
+.modal .setctl input:focus{outline:none; border-color:var(--accent); background:var(--panel)}
+.setctl .roff{font-size:12px; color:var(--faint)}
+.setctl .secclr{background:none; border:1px solid var(--line); border-radius:8px; cursor:pointer;
+                padding:5px 10px; font-size:12px; color:var(--muted); white-space:nowrap}
+.setctl .secclr:hover{border-color:#e5b3b3; color:#b42318}
+/* 垃圾桶（设置面板最后一栏）：删掉的对话在这儿躺着，7 天内能捡回来 */
+.trashrow .tt{font-size:13px; color:#344054; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.trashrow .tt .left{display:inline-block; font-size:10.5px; color:#b45309; border:1px solid #fbe3ad;
+                    background:#fffbeb; border-radius:10px; padding:0 6px; margin-left:6px; white-space:nowrap}
+.trashrow .tt .left.soon{color:#b42318; border-color:#f6c9c9; background:#fef3f2}
+.trashrow .trashback{background:none; border:1px solid var(--line); border-radius:8px; cursor:pointer;
+                     padding:5px 10px; font-size:12px; color:var(--accent); white-space:nowrap}
+.trashrow .trashback:hover{border-color:var(--accent); background:var(--panel2)}
+.trashrow .trashback[disabled]{color:var(--faint); cursor:default; border-color:var(--line); background:none}
+.modal .setctl input[type=password]{width:240px; margin-top:0; padding:6px 9px; border-radius:8px;
+  background:var(--panel2); border:1px solid var(--line); color:var(--text); font:inherit; font-size:12.5px}
+.setctl .chk{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); cursor:pointer}
+.setctl .chk input{accent-color:var(--accent)}
+.setctl .mdl{font-size:12.5px; color:var(--text)}
+
+/* 工具那一栏 = 一件工具一张卡：两列并排, 点开的那张占满整行(里面的参数才摊得开)。
+   卡头常显名字 + 现在是开是关 —— 收起来也一眼看得见哪件开着。 */
+.setsec.setwide{display:block}
+.cardgrid{display:grid; grid-template-columns:1fr 1fr; gap:9px; align-items:start}
+.tcard{border:1px solid var(--line); border-radius:10px; background:var(--panel); min-width:0}
+.tcard .thead{display:flex; align-items:center; gap:7px; padding:9px 11px; cursor:pointer;
+              border-radius:10px}
+.tcard .thead:hover{background:var(--panel2)}
+.tcard .thead .tn{flex:1; min-width:0; font-size:13px; color:var(--text);
+                  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.tcard .thead .tstate{font-size:11px; color:var(--faint); white-space:nowrap}
+.tcard .thead .tstate.on{color:#15803d}
+.tcard .thead .tchev{font-size:12px; color:var(--faint); transition:transform .15s}
+.tcard.open{grid-column:1 / -1}
+.tcard.open .thead{border-bottom:1px solid var(--line); border-radius:10px 10px 0 0}
+.tcard.open .thead .tchev{transform:rotate(90deg)}
+.tcard .tbody{display:none; padding:2px 12px 10px}
+.tcard.open .tbody{display:block}
+
+/* 工具那一栏：可选工具本机跑不了时, 在条目下面挂一句实话（不是报错, 是条件不满足） */
+.warnnote{display:block; font-size:11.5px; color:#b45309; background:#fffbeb;
+          border:1px solid #fbe3ad; border-radius:8px; padding:5px 8px; margin-top:6px; line-height:1.65}
+
+/* 外部工具服务：一服务一张卡, 上行「名字/接法/开关/动作」, 下行「命令 或 地址」 */
+.mcplist{margin-top:8px}
+.mcprow{border:1px solid var(--line); border-radius:9px; padding:8px 10px; margin-bottom:8px;
+        background:var(--panel2)}
+.mcpline{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.mcpline + .mcpline{margin-top:6px}
+.mcpline .chk{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); cursor:pointer}
+.mcpline .chk input{accent-color:var(--accent)}
+.modal .mcpline input[type=text], .modal .mcpline select{
+  margin-top:0; padding:5px 8px; border-radius:7px; background:var(--panel);
+  border:1px solid var(--line); color:var(--text); font:inherit; font-size:12.5px}
+.modal .mcpline input[type=text]:focus, .modal .mcpline select:focus{
+  outline:none; border-color:var(--accent)}
+.mcpline input[data-f=name]{width:160px}
+.mcpline input[data-f=command]{flex:1 1 240px; min-width:180px}
+.mcpline input[data-f=url]{flex:1 1 240px; min-width:180px}
+.mcpline input[data-f=cwd]{width:150px}
+.mcpbtn{background:none; border:1px solid var(--line); border-radius:7px; cursor:pointer;
+        padding:5px 10px; font-size:12px; color:var(--muted); white-space:nowrap}
+.mcpbtn:hover{border-color:var(--accent); color:var(--accent)}
+.mcpbtn.danger:hover{border-color:#e5b3b3; color:#b42318}
+.mcpstat{display:block; font-size:11.5px; color:var(--faint); margin-top:6px; line-height:1.65;
+         word-break:break-word}
+.mcpstat.ok{color:#15803d}
+.mcpstat.bad{color:#b42318}
+.mcpcmd{display:block; font-size:12px; background:var(--panel2); border:1px solid var(--line);
+        border-radius:8px; padding:7px 9px; margin-top:6px; color:var(--text);
+        white-space:pre-wrap; word-break:break-all}
+.setfoot{display:flex; justify-content:space-between; align-items:center; gap:10px;
+         margin-top:14px; padding-top:12px; border-top:1px solid var(--line)}
+
+/* ---------- 平台比例（原地展开的滑动按钮，见 .morph） ---------- */
+
+.toast{
+  position:fixed; left:50%; bottom:34px; transform:translateX(-50%);
+  background:#1f2430; color:#fff; padding:9px 16px; border-radius:9px;
+  font-size:13px; opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; z-index:60;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(-6px)}
+
+/* ---------- 动效（克制: 150-300ms ease, 只挂在"状态真的变了"的地方） ---------- */
+@keyframes riseIn{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+@keyframes fadeIn{from{opacity:0} to{opacity:1}}
+@keyframes popIn{from{opacity:0; transform:translateY(10px) scale(.985)} to{opacity:1; transform:none}}
+@keyframes dotJump{0%,60%,100%{transform:translateY(0); opacity:.35} 30%{transform:translateY(-4px); opacity:1}}
+
+/* 入场只给**这一轮新出现的那条**(由 JS 打 .enter) —— renderAll 每次都重画整个列表,
+   要是给所有 .msg 挂 animation, 每次刷新整屏都会重放一遍, 看着像页面在抖。 */
+.msg.enter{animation:riseIn .26s cubic-bezier(.22,.61,.36,1) both}
+
+/* 交互反馈: 悬停要过渡、按下要回弹(不然是"啪"地变色) */
+.btn, .chip, .mcpbtn, .ico, .srow, .sess li.row, .hero .eg button{
+  transition:background-color .18s ease, border-color .18s ease, color .18s ease, transform .12s ease;
+}
+.btn:active, .chip:active, .mcpbtn:active, .hero .eg button:active{transform:translateY(1px)}
+.btn:disabled{opacity:.6; cursor:default}
+
+.modal.show{animation:fadeIn .18s ease both}
+.modal.show .box{animation:popIn .22s cubic-bezier(.22,.61,.36,1) both}
+
+body.empty .hero{animation:riseIn .3s cubic-bezier(.22,.61,.36,1) both}
+
+/* 题在跑: 三点跳动 + 虚线骨架卡。一题要爬几分钟, 这段时间页面上得有东西在动,
+   否则看着像卡死了(首屏还会整个撤掉, 更容易让人以为点坏了)。 */
+.card.pending{border-style:dashed; background:var(--panel2)}
+.card.pending .bd{display:flex; flex-direction:column; gap:9px}
+.typing{display:flex; gap:5px; align-items:center}
+.typing i{width:7px; height:7px; border-radius:50%; background:var(--accent);
+          animation:dotJump 1.2s ease-in-out infinite}
+.typing i:nth-child(2){animation-delay:.15s}
+.typing i:nth-child(3){animation-delay:.3s}
+.ptxt{font-size:13px; color:var(--muted)}
+.psteps{font-size:11.5px; color:var(--faint)}
+.psteps b{color:var(--muted); font-weight:400}
+/* 实时画面: 引擎边跑边推的那些行(第几轮 / 哪一次爬取在跑 / 回来多少条 / 用量)。
+   爬虫单次要几十秒到几分钟且**中途无进度可报**, 所以每条在跑的都挂一个自己走字的秒表。
+   类名**不能叫 .lrow** —— 设置页那些行也叫 .lrow, 而那条是 display:flex + space-between:
+   套上去之后"爬 NGA 正在爬 <词> <秒表>"会被拆成几个 flex 项拉满整行, 看着是散的。 */
+.lstep{font-size:11.5px; color:var(--muted); line-height:1.7}
+.lstep b{color:var(--text); font-weight:600}
+.lstep .tq{color:var(--faint)}
+.lstep.run{color:var(--accent)}
+.lstep.ok{color:var(--ok)}
+.lstep.bad{color:var(--bad)}
+/* 边收边画的正文草稿。它是**暂存**: 收口那一下会被正式卡片整条替掉(带引用芯片/统计/轨迹),
+   所以这里画得简单些 —— 引用号不画成芯片, 那些库内全局号要等本题收口才映射得出来。 */
+.draft{margin-top:2px; padding:9px 11px; border-left:2px solid var(--accent);
+       background:var(--panel2); border-radius:0 8px 8px 0;
+       font-size:13.5px; line-height:1.8; color:var(--text); max-height:340px; overflow:auto;
+       word-break:break-word}
+.draft .cur{display:inline-block; width:7px; height:15px; margin-left:2px; vertical-align:-3px;
+            background:var(--accent); animation:busyPulse 1s ease-in-out infinite}
+
+/* 系统设了"减少动态效果"就全关掉 —— 这是无障碍要求, 不是可选项 */
+@media(prefers-reduced-motion:reduce){
+  .msg.enter, .modal.show, .modal.show .box, body.empty .hero, .toast{animation:none}
+  .typing i{animation:none; opacity:.6}
+}
+
+@media(max-width:900px){
+  aside{display:none}
+  .charts{grid-template-columns:1fr}
+  .composer{padding:6px 12px 14px}
+}
+</style>
+</head>
+<body>
+
+<button class="ico" id="expandBtn" title="展开会话列表">☰</button>
+
+<div class="app">
+  <aside>
+    <div class="brand">
+      <b>游戏社区问答</b>
+      <span class="spacer"></span>
+      <button class="ico" id="sessToggle" title="收起会话列表">☰</button>
+    </div>
+    <div class="top">
+      <button class="btn newchat" id="newSess"><i>＋</i>开启新对话</button>
+    </div>
+    <ul class="sess" id="sessList"></ul>
+    <div class="sbot">
+      <div class="srow" id="stNga" title="NGA 采集状态 · 点击看详情"><i class="dot ok"></i><b>NGA</b><span>正常</span></div>
+      <div class="srow" id="stBili" title="bilibili 采集状态 · 点击看详情"><i class="dot ok"></i><b>bilibili</b><span>正常</span></div>
+      <button class="sbtn" id="settingsBtn" title="各项设置"><i>⋯</i>设置</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="stream" id="stream">
+      <div class="hero" id="hero">
+        <h1>想了解有关游戏的什么内容？</h1>
+        <div class="eg" id="egBox"></div>
+      </div>
+      <div class="wrap" id="wrap"></div>
+    </div>
+    <div class="composer">
+      <div class="box">
+        <textarea id="q" placeholder="问一个游戏社区问题，例如：三角洲行动现在的社区氛围怎么样？"></textarea>
+        <div class="cbar">
+          <span class="cgroup" id="modeSeg">
+            <button class="chip on" data-mode="快速">快速</button>
+            <button class="chip" data-mode="精准">精准</button>
+          </span>
+          <div class="morph" id="ratioMorph">
+            <button class="morphBtn" id="ratioBtn" aria-expanded="false" aria-controls="ratioBody" title="平台比例">平台比例</button>
+            <div class="morphBody" id="ratioBody">
+              <input type="range" id="ratioRange" min="0" max="100" value="50" step="5" aria-label="NGA 取样占比">
+              <span class="rval" id="ratioVal">两平台均等</span>
+            </div>
+          </div>
+          <button class="send" id="send" title="发送">↑</button>
+          <button class="pause" id="pause" title="暂停：先搁着，不出答案；已爬到的样本留着，下次点「继续」接着爬">❚❚</button>
+          <button class="stop" id="stop" title="提前停止：到此为止，用已取到的证据出答案">■</button>
+        </div>
+      </div>
+    </div>
+    <div class="fine" id="fine">
+      社区当下口径，非官方权威；<b>[id=N]</b> 点开核原帖
+    </div>
+  </main>
+</div>
+
+<!-- bili 扫码 -->
+<div class="modal" id="mBili">
+  <div class="box">
+    <div class="hd"><b>bilibili 登录态失效</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd">
+      <div class="warnbox">没登录时这轮取不到样本，答案会明说。</div>
+      <ol>
+        <li>手机 bilibili App 扫码</li>
+        <li>确认登录（登录态只留在本机）</li>
+      </ol>
+      <div class="qr" id="qrBox"></div>
+      <div style="text-align:center;font-size:12px;color:var(--muted)" id="qrState">正在取码…</div>
+    </div>
+    <div class="ft"><button class="btn ghost" data-close>稍后再说</button><button class="btn solid blue" id="qrDone">重新校验</button></div>
+  </div>
+</div>
+
+<!-- NGA 扫码 -->
+<div class="modal" id="mNga">
+  <div class="box">
+    <div class="hd"><b>NGA 登录态失效</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd">
+      <div class="warnbox">没登录时这轮取不到样本。凭据写在本机，不外传。</div>
+      <ol>
+        <li>NGA App → 左上角菜单 → 扫一扫</li>
+        <li>扫码后在手机上确认</li>
+      </ol>
+      <div class="qr" id="ngaQrBox"></div>
+      <div style="text-align:center;font-size:12px;color:var(--muted)" id="ngaQrState">正在取码…</div>
+      <details style="margin-top:10px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--muted)">扫不了码？手工填 cookie</summary>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.7">
+          在浏览器登录 NGA，从开发者工具里复制
+          <code>ngaPassportUid</code> / <code>ngaPassportCid</code> 填进本机 <code>config.json</code>，再点下面「重新校验」。
+        </div>
+      </details>
+    </div>
+    <div class="ft"><button class="btn ghost" data-close>稍后再说</button><button class="btn solid blue" id="ngaRecheck">重新校验</button></div>
+  </div>
+</div>
+
+<!-- 清除记忆 -->
+<div class="modal" id="mClear">
+  <div class="box">
+    <div class="hd"><b>清除我的对话记忆</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd">
+      <div class="dangerbox">
+        本功能暂未开放，暂时还不能清除 <b id="clearCnt">…</b> 的对话记忆。
+      </div>
+      <div>输入 <b>清除对话记忆</b> 确认。</div>
+      <input type="text" id="clearInput" placeholder="在此输入确认词">
+    </div>
+    <div class="ft"><button class="btn ghost" data-close>取消</button><button class="btn solid" id="clearGo" disabled>确认清除</button></div>
+  </div>
+</div>
+
+<!-- 删除一个对话（连它的后端记忆一起清） -->
+<div class="modal" id="mDel">
+  <div class="box">
+    <div class="hd"><b>删除这个对话</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd">
+      <div class="dangerbox">
+        将删除这个对话的<b>全部记忆</b>：状态卡、结论日志、逐题流水。<br>
+        整个进垃圾桶，<b>7 天内在「设置 → 垃圾桶」可以恢复</b>。<br>
+        证据库不受影响，别的答案里的 <b>[id=N]</b> 照样对得回原文。
+      </div>
+      <div>输入 <b>删除这个对话</b> 确认。</div>
+      <input type="text" id="delInput" placeholder="在此输入确认词">
+      <div id="delWho" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    </div>
+    <div class="ft"><button class="btn ghost" data-close>取消</button><button class="btn solid" id="delGo" disabled>确认删除</button></div>
+  </div>
+</div>
+
+<!-- 爬虫状态 -->
+<div class="modal" id="mStatus">
+  <div class="box">
+    <div class="hd"><b>爬虫状态</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd" id="statusBody"></div>
+  </div>
+</div>
+
+<!-- 各项设置（清单来自 /api/settings，可改可存；凭据只读） -->
+<div class="modal" id="mSettings">
+  <div class="box" style="width:min(640px,100%)">
+    <div class="hd"><b>各项设置</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd" style="max-height:78vh">
+      <!-- 常见的 OpenAI 兼容地址，填「接口地址」时给个下拉提示（都是能直接填的，不是必选） -->
+      <datalist id="llmUrls">
+        <option value="https://api.deepseek.com">DeepSeek</option>
+        <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">通义千问（阿里云）</option>
+        <option value="https://api.moonshot.cn/v1">Kimi（月之暗面）</option>
+        <option value="https://open.bigmodel.cn/api/paas/v4">智谱 GLM</option>
+        <option value="https://ark.cn-beijing.volces.com/api/v3">豆包（火山方舟）</option>
+        <option value="https://api.siliconflow.cn/v1">硅基流动</option>
+        <option value="https://api.openai.com/v1">OpenAI</option>
+        <option value="http://127.0.0.1:11434/v1">本机跑的 Ollama</option>
+      </datalist>
+      <div id="settingsBody"><div style="font-size:12.5px;color:#667085">正在读取…</div></div>
+      <div class="setfoot">
+        <button class="btn danger" id="clearMem">清除我的对话记忆</button>
+        <span style="display:flex;align-items:center;gap:10px">
+          <span id="setMsg" style="font-size:12px;color:#667085"></span>
+          <button class="btn solid blue" id="setSave">保存</button>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 引用原文 -->
+<div class="modal" id="mCite">
+  <div class="box">
+    <div class="hd"><b>引用原文</b><button class="btn ghost" data-close>关闭</button></div>
+    <div class="bd" id="citeBody" style="max-height:64vh;overflow:auto"></div>
+  </div>
+</div>
+
+<!-- 会话行的「⋯」菜单（一次只开一个，位置由 JS 摆） -->
+<div class="smenu" id="sidMenu" role="menu">
+  <button data-act="pin" role="menuitem">置顶</button>
+  <button data-act="pdf" role="menuitem">导出为 PDF</button>
+  <button data-act="del" class="danger" role="menuitem">删除这个对话</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var D = {asks:[], crawlers:[]};
+  var state = { mode:"快速", ratio:50, smallModel:true };
+
+  /* ---------- 对话（会话）登记簿 ----------
+     一个对话 = 一个会话号 = 后端一个 scope: 记忆(状态卡/结论日志/检查点)按它严格隔离。 */
+  function sidFind(id){
+    for(var i=0;i<SIDS.length;i++) if(SIDS[i].id===id) return SIDS[i];
+    return null;
+  }
+  function sidLabel(id){
+    var e=sidFind(id);
+    return (e && e.title) || "新对话";
+  }
+  function registryPut(){                 // 只存「有哪些对话/叫什么/最后一次动是什么时候」
+    try{ localStorage.setItem("ha_sids", JSON.stringify(SIDS.slice(0,80))); }catch(e){}
+  }
+  function freshId(){ return Math.random().toString(36).slice(2,10); }
+  /* 对话内容本身在后端那本账里(按 scope 存), 这里不复制 —— 换台机器打开就是空的, 这是对的。 */
+  var SIDS=(function(){
+    var a=null;
+    try{ a=JSON.parse(localStorage.getItem("ha_sids")||"null"); }catch(e){}
+    return (a instanceof Array) ? a.filter(function(x){ return x && typeof x.id==="string"; }) : [];
+  })();
+  var SID=(function(){                    // 当前对话的会话号: 决定记忆归属(后端按它隔离 scope)
+    var k="ha_sid", v=null;
+    try{ v=localStorage.getItem(k); }catch(e){}
+    if(!v){ v=freshId(); try{ localStorage.setItem(k,v); }catch(e){} }
+    return v;
+  })();
+  /* 点了「开启新对话」之后、还没问出第一句之前的状态: 此刻停在主界面上, **还没有**新对话。
+     会话号要等真开口那一刻才发(见 ensureSid)。 */
+  var NEWCHAT=false;
+  /* 当前这个对话的账拉回来没有。没拉回来之前不摆「新会话」那一行 —— 否则切到老对话的
+     那一瞬间 D.asks 还是空的, 那一行会先闪一下再被真标题顶掉(见 renderSessions)。 */
+  var HIST_OK=false;
+  function sidOrder(a,b){                 // 置顶的排最前, 其余按"最后动过"倒序
+    if(!!a.pin !== !!b.pin) return a.pin ? -1 : 1;
+    return String(b.at||"").localeCompare(String(a.at||""));
+  }
+  function sidUse(id){                    // 记账: 这个对话刚动过 -> 提到最前, 并切到它
+    if(id){ SID=id; try{ localStorage.setItem("ha_sid",id); }catch(e){} }
+    var e=sidFind(SID);
+    if(!e){ e={id:SID,title:"",at:""}; SIDS.unshift(e); }
+    e.at=new Date().toISOString();
+    SIDS.sort(sidOrder);
+    registryPut();
+  }
+  function sidRemember(){
+    /* 标题 = 这个对话里最早的问句(后端按写入序给, asks[0] 就是最早那条) */
+    var q=(D.asks && D.asks.length) ? String(D.asks[0].question||"").replace(/\s+/g," ").trim() : "";
+    var e=sidFind(SID);
+    /* 一句都没问过的, 还不算一个对话, 不进侧栏 —— 首屏那个空白的「新对话」行就是这么来的。 */
+    if(!e && !q) return;
+    /* 新登记的那一行, 建的时候就带上名字: 先建个没名字的、指望下一轮再补, 侧栏会一直显示「新对话」。 */
+    if(!e){ e={id:SID,title:q.slice(0,26),at:""}; SIDS.unshift(e); }
+    else if(!e.title && q) e.title=q.slice(0,26);
+    sidUse();
+  }
+  /* 首屏不登记: 当前这个对话**有没有题**得问过后端才知道(refreshHistory → sidRemember),
+     一句没问过的空对话不该在侧栏占一行(老用户那个"只有 ha_sid、没有登记簿"也走这条路)。 */
+
+  /* 后端知道哪些对话(每题一条的流水) —— 上面那本登记簿只在这台浏览器里, 清一次站点数据就空了,
+     而答案和记忆明明都还在后端。这里把后端的清单并回来: 本机没有的那些补上一行;
+     后端说已经删掉的(gone)本机这一行也下去 —— 删不是从这台浏览器发起的时候, 就靠它把行抹掉。
+     其余的只补不删: 本机能看见而后端没有的(比如题还没答完)照旧留着。 */
+  function refreshSessions(){
+    return api("/api/sessions").then(function(r){
+      var changed=false;
+      var gone={}; (r.gone||[]).forEach(function(id){ if(id) gone[id]=1; });
+      (r.sessions||[]).forEach(function(s){
+        if(!s || !s.id) return;
+        /* 「有几道题搁着」只有后端知道(按 scope 数流水), 本机留一份是为了画侧栏那个小记号 ——
+           它在本地登记簿里跟着走, 免得每次重画都要等一次 /api/sessions 回来。 */
+        var np=s.paused||0;
+        var e=sidFind(s.id);
+        if(e){
+          if(!e.title && s.title){ e.title=String(s.title).slice(0,26); changed=true; }
+          if((e.paused||0)!==np){ e.paused=np; if(np) e.at=new Date().toISOString(); changed=true; }
+          return;
+        }
+        /* 后端给的是本地钟点(没带时区), 本机记的是 UTC —— 转成同一种写法, 否则排序会差出一个时区 */
+        var at="", d=s.at?new Date(s.at):null;
+        if(d && !isNaN(d.getTime())) at=d.toISOString();
+        SIDS.unshift({id:s.id, title:String(s.title||"").slice(0,26), at:at, paused:np});
+        changed=true;
+      });
+      /* 侧栏顶上那几行没名字的空对话: 后端压根不知道它(早先版本留下的空壳)。除了当前正开着的、
+         置顶的、已经有名字的, 其余扫掉 —— 不然刷新一次就多挂一行「新对话」。
+         正在看的那个(SID)不因 gone 掉行: 那是这一屏的上下文, 要换也得等用户自己切走。 */
+      var known={}; (r.sessions||[]).forEach(function(s){ if(s&&s.id) known[s.id]=1; });
+      var before=SIDS.length;
+      SIDS=SIDS.filter(function(s){
+        if(s.id===SID) return true;
+        if(gone[s.id]) return false;
+        return s.title || s.pin || known[s.id];
+      });
+      if(SIDS.length!==before) changed=true;
+      if(changed){ SIDS.sort(sidOrder); registryPut(); renderSessions(); }
+    }).catch(function(){});
+  }
+
+  /* ---------- 后端接线 ---------- */
+  function api(path,opt){
+    opt=opt||{};
+    opt.headers=Object.assign({"Content-Type":"application/json"}, opt.headers||{});
+    return fetch(path,opt).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){ j.__status=r.status; return j; });
+    });
+  }
+  function refreshStatus(){
+    /* 带 SID: 冷却是按会话的, 后端要知道是哪一家的状态 */
+    return api("/api/status?session="+encodeURIComponent(SID)).then(function(s){
+      D.crawlers=s.crawlers||[]; D.measure=s.measure; renderStatus();
+    }).catch(function(){
+      D.crawlers=[]; renderStatus();
+      /* 拿不到状态 = 后端挂了。D.crawlers 空掉后循环一次也不进, 两盏灯会停在上一次的绿色上,
+         界面上看不出后端已经没了 —— 显式置成异常态。 */
+      [["#stNga","NGA"],["#stBili","bilibili"]].forEach(function(p){
+        var row=$(p[0]); if(!row) return;
+        row.className="srow"; row.classList.add("bad");
+        row.innerHTML='<i class="dot bad"></i><b>'+esc(p[1])+'</b><span>状态未知</span>';
+      });
+      toast("后端连不上（:8780 起了没？）");
+    });
+  }
+  function refreshHistory(){
+    /* 这个对话自己问过的题(后端按 scope 从记忆库读) —— 换了对话就是另一本账 */
+    if(NEWCHAT) return Promise.resolve();     // 停在主界面上: 不去拉上一个对话的账(拉回来它就又画出来了)
+    return api("/api/history?session="+encodeURIComponent(SID)).then(function(h){
+      D.asks=h.asks||[]; HIST_OK=true; sidRemember(); renderAll(); renderSessions();
+    }).catch(function(){});
+  }
+  function scrollBottom(){
+    try{ window.scrollTo(0, document.body.scrollHeight); }catch(e){}
+  }
+  /* 边收边画时该不该跟着滚: **只有读者本来就在底部**才跟。他往上翻看旧内容时页面被新字
+     一路拽回底部是最烦人的一种交互(流式界面上的经典坑)。 */
+  var followBot=true;
+  function atBottom(){
+    return (window.innerHeight+window.pageYOffset) >= document.body.scrollHeight-90;
+  }
+  window.addEventListener("scroll", function(){ followBot=atBottom(); }, {passive:true});
+  function scrollFollow(){ if(followBot) scrollBottom(); }
+
+  /* ---------- 工具 ---------- */
+  function $(s,r){ return (r||document).querySelector(s); }
+  /* 引号也得转: 这个函数大量用在 HTML 属性里(title/data-*), 只转 &<> 的话
+     用户问句里一个 " 就能把属性撑破。 */
+  function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+  var toastT;
+  function toast(msg){
+    var t=$("#toast"); t.textContent=msg; t.classList.add("show");
+    clearTimeout(toastT); toastT=setTimeout(function(){ t.classList.remove("show"); },2000);
+  }
+  function sentiName(v){ return v===0?"负":v===1?"中":v===2?"正":"无"; }
+  function pct(a,b){ return b? Math.round(a*100/b)+"%" : "0%"; }
+  function legacyCopy(txt){                       // 老浏览器/非安全上下文没有 clipboard API
+    try{
+      var ta=document.createElement("textarea");
+      ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+      document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta);
+    }catch(e){}
+  }
+
+  /* ---------- 爬虫状态（原顶栏两盏灯 → 输入区小圆点 + 详情窗） ---------- */
+  function lampCls(v){
+    if(v===true) return "ok";
+    if(v===false) return "bad";
+    return "warn";           // unknown
+  }
+  function lampText(v){ return v===true?"正常":v===false?"失效":"未知"; }
+  function worst(a,b){      // 服务 + 登录态 合成一个圆点：任一红即红
+    if(a==="bad"||b==="bad") return "bad";
+    if(a==="warn"||b==="warn") return "warn";
+    return "ok";
+  }
+
+  function lampBrief(svc,lgn){
+    if(svc==="bad") return "服务不可达";
+    if(lgn==="bad") return "登录态失效";
+    if(svc==="warn"||lgn==="warn") return "待校验";
+    return "正常";
+  }
+
+  /* 冷却倒计时: 本地每秒走字, 不走后端(后端状态是 30s 一次, 秒表得自己 tick)。
+     走完不猜"已经好了", 而是立刻问一次后端要真值。 */
+  var coolAt={}, gapAt={};
+  function coolText(sec){
+    var s=Math.max(0,Math.ceil(sec));
+    return Math.floor(s/60)+":"+("0"+(s%60)).slice(-2);
+  }
+
+  /* 一个爬虫此刻是什么态 —— 纯函数, 不碰 DOM(好让离线自检能直接喂数据验)
+
+     公用之后"忙"分好几种, 说法不一样, 混起来说就是骗人:
+       cool  = 我自己被平台风控退避了(B站), 倒计时走完自好 —— 是我的账
+       queue = 这个平台有人占着, 我排在门口等 —— 不是我的账, 等着就行
+       busy  = 爬虫正在爬: 是我(mine)还是别人, 说法不同
+       gap   = 刚爬过, 要守平台最小间距(B站 60/120 秒), 走完才能再爬 —— 也不分是谁爬的
+     优先级: 冷却(有倒计时) > 排队(在等锁) > 正在爬 > 未启动 > 间距 > 服务/登录态。 */
+  function crawlerState(c){
+    c=c||{};
+    var off=(c.running===false);
+    var svc=off?"off":lampCls(c.ok), lgn=off?"off":lampCls(c.login);
+    var cool=(c.cool_left||0)>0 ? Math.ceil(c.cool_left) : 0;   // 引擎侧: 风控退避, 带倒计时
+    var g=c.gate||{};
+    var gap=(g.gap_left||0)>0 ? Math.ceil(g.gap_left) : 0;      // 闸门侧: 平台级最小间距
+    var queued=(g.waiting===true), ahead=(g.ahead||0), mine=(g.mine===true);
+    var busy=(c.busy===true);                                   // 爬虫侧: 有 /crawl 在跑
+    var w = cool?"cool" : queued?"queue" : busy?"busy" : off?"off" : (gap?"gap":worst(svc,lgn));
+    var brief = cool?"冷却中"
+      : queued?("排队中"+(ahead>0?"（前面 "+ahead+" 个）":""))
+      : busy?(mine?"正在爬取":"别人正在爬")
+      : off?"未启动"
+      : gap?"刚爬过" : lampBrief(svc,lgn);
+    return {off:off, svc:svc, lgn:lgn, cool:cool, busy:busy, gap:gap,
+            queued:queued, ahead:ahead, mine:mine, w:w, brief:brief};
+  }
+
+  function renderStatus(){
+    var body="";
+    D.crawlers.forEach(function(c){
+      /* running===false：按需拉起的爬虫此刻还没起。这是**正常的静止态**, 不是故障 ——
+         画灰灯「未启动」, 别拿红灯吓人。刷状态**不会**把它拉起来, 真用到(问一题/点去修复)才起。 */
+      var st=crawlerState(c), off=st.off, w=st.w;
+      if(st.cool) coolAt[c.key]=Date.now()+st.cool*1000; else delete coolAt[c.key];
+      /* 间距倒计时也本地每秒走字(与冷却同一套): 后端状态隔一阵才刷一次, 秒表得自己 tick */
+      if(st.gap) gapAt[c.key]=Date.now()+st.gap*1000; else delete gapAt[c.key];
+      var cooled=st.cool?'<b class="num" data-cool="'+c.key+'">'+coolText(st.cool)+'</b>':'';
+      var gapped=st.gap?'<b class="num" data-gap="'+c.key+'">'+coolText(st.gap)+'</b>':'';
+      var gap=cooled?" "+cooled:(gapped?" "+gapped:"");
+      /* 侧栏底那一行：圆点 + 平台名 + 一句话状态（点开是详情窗） */
+      var row=$("#st"+c.key.charAt(0).toUpperCase()+c.key.slice(1));
+      if(row){
+        row.className="srow"+(w==="ok"||w==="off"?"":" "+w);
+        row.innerHTML='<i class="dot '+w+'"></i><b>'+esc(c.name)+'</b><span>'+st.brief+gap+'</span>';
+      }
+      /* 冷却中 / 正在使用都**不给**修复钮 —— 这两个态下后端会直接挡(429: 一个拿不到 RUN_LOCK、
+         一个在风控退避), 给个按下去必然报错的按钮是骗人。冷却那条把倒计时写进说明里:
+         用户看得见"还要等多久", 就不会去连点。 */
+      var btn = st.cool
+        ? '<span style="font-size:12px;color:#d97706">冷却中，'+cooled+' 后可用</span>'
+        : st.queued
+          ? '<span style="font-size:12px;color:#2563eb">排队中，轮到才动</span>'
+          : st.busy
+            ? '<span style="font-size:12px;color:#2563eb">正在使用，等它空下来</span>'
+            : off
+              ? '<button class="btn ghost" data-fix="'+c.key+'">去修复</button>'
+              : c.login===false
+                ? '<button class="btn solid" data-fix="'+c.key+'">去修复</button>'
+                : c.login==="unknown"
+                  ? '<button class="btn ghost" data-fix="'+c.key+'">去校验</button>'
+                  : '<span style="font-size:12px;color:#16a34a">无需处理</span>';
+      body+='<div class="lrow"><span class="who">'+esc(c.name)+'</span>'
+        + '<span style="display:flex;gap:14px">'
+        +   '<span class="lamp"><i class="dot '+st.svc+'"></i>服务 '+(off?"未启动":(c.ok?"正常":"不可达"))+'</span>'
+        +   '<span class="lamp"><i class="dot '+st.lgn+'"></i>登录态 '+(off?"—":lampText(c.login))+'</span>'
+        +   (st.cool?'<span class="lamp"><i class="dot cool"></i>冷却中'+gap+'</span>':"")
+        +   (st.queued?'<span class="lamp"><i class="dot queue"></i>排队中'+(st.ahead>0?"（前面 "+st.ahead+" 个）":"")+'</span>':"")
+        +   (st.busy?'<span class="lamp"><i class="dot busy"></i>'+(st.mine?"正在爬取":"别人正在爬")+'</span>':"")
+        +   (!st.queued&&!st.busy&&st.gap?'<span class="lamp"><i class="dot gap"></i>刚爬过，'+gapped+' 后可再爬</span>':"")
+        + '</span>'+btn+'</div>';
+    });
+    /* 占位卡那行"现在在干什么"跟着一起刷 —— 它是同一份数据的另一种说法, 不该各说各的 */
+    var pl=$("#pendLive"); if(pl) pl.innerHTML=pendingLive();
+    body+='<div class="warnbox">爬虫平时不跑，问第一题时自动拉起，闲下来自己关。<br>'
+        + '<b>刚爬过 / 冷却中</b>：平台有最小间隔（B站 60/120 秒），走完才能再爬。<br>'
+        + '登录态红 = 本轮取不到样本，答案会明说。「去修复」用手机 App 扫码。</div>';
+    if(D.measure==="keyword"){
+      body+='<div class="warnbox">情感/反讽：本机没装打分服务，按关键词判。</div>';
+    }
+    $("#statusBody").innerHTML=body;
+    $("#statusBody").querySelectorAll("[data-fix]").forEach(function(b){
+      b.onclick=function(){
+        var k=b.getAttribute("data-fix");
+        $("#mStatus").classList.remove("show");
+        open(k==="bili"?"#mBili":"#mNga");
+        if(k==="bili") qrShow(); else ngaQrShow();   // 开窗即取码（两家都是扫码）
+      };
+    });
+  }
+
+  /* 倒计时每秒走一次字；某个平台走到 0 就去问后端要真值(不自己判定"好了")。
+     走到 0 就把这条账**销掉**, 免得后端连不上时每秒空问一次(问到真值会重新摆上)。 */
+  setInterval(function(){
+    var stale=false;
+    document.querySelectorAll("[data-cool]").forEach(function(n){
+      var k=n.getAttribute("data-cool");
+      if(!(k in coolAt)) return;                  // 已经销过账了(后端那趟没刷出它)
+      var left=(coolAt[k]-Date.now())/1000;
+      if(!(left>0)){ stale=true; delete coolAt[k]; return; }
+      n.textContent=coolText(left);
+    });
+    document.querySelectorAll("[data-gap]").forEach(function(n){
+      var k=n.getAttribute("data-gap");
+      if(!(k in gapAt)) return;
+      var left=(gapAt[k]-Date.now())/1000;
+      if(!(left>0)){ stale=true; delete gapAt[k]; return; }
+      n.textContent=coolText(left);
+    });
+    /* 正在爬的那一条跑了多久。爬虫单次几十秒到几分钟, 中间**没有任何进度可报**
+       (模型流此时已经关闭), 所以给个自己走字的秒表 —— 页面看着像在动, 而不是卡死。 */
+    document.querySelectorAll("[data-since]").forEach(function(n){
+      n.textContent=elapsedText(Number(n.getAttribute("data-since")));
+    });
+    if(stale) refreshStatus();
+  }, 1000);
+
+  /* ---------- 对话列表（照参考图：按时间分组，一行一个标题） ----------
+     列出的是**对话**（本浏览器开过的），不是本对话里的题 —— 点一行切过去, 那边是一本独立的账。
+     每行右边一个「⋯」= 置顶/取消置顶 + 导出为 PDF(整个对话, 见 /api/pdf/conv)
+     + 删除这个对话(连它的后端记忆一起清, 见 /api/forget)。 */
+  function daysAgo(iso){
+    var d=new Date(iso), now=new Date();
+    return Math.floor((now-d)/86400000);
+  }
+  function groupOf(n){ return n<7 ? "7 天内" : n<30 ? "30 天内" : "更早"; }
+  function sessRow(s){
+    var t=s.title||"新对话";
+    /* 有一道题还搁着(用户自己按的暂停、没被接走)就在名字后面点一个小记号:
+       搁着的题不会自己跑, 侧栏不提醒, 用户根本想不起来还有这回事。
+       只数 paused 不数 unfinished —— 崩掉的那种没有「继续」可点, 标了也白标。 */
+    var np=s.paused||0;
+    var tag = np ? '<span class="ptag" title="有 '+np+' 道题搁着，点进去可以继续">'+np+'</span>' : "";
+    /* NEWCHAT 期间谁都不算"当前": 停在主界面上, 侧栏里一条也不该高亮 */
+    return '<li class="row'+((s.id===SID&&!NEWCHAT)?" on":"")+'" data-sid="'+esc(s.id)+'" title="'+esc(t)+'">'
+      +'<span class="t">'+esc(t)+'</span>'+tag
+      +'<button class="rowmore" data-more="'+esc(s.id)+'" aria-haspopup="true" aria-expanded="false"'
+      +' aria-label="管理这个对话" title="管理这个对话">⋯</button></li>';
+  }
+  function renderSessions(){
+    var order=["7 天内","30 天内","更早"], buckets={}, h="";
+    order.forEach(function(g){ buckets[g]=[]; });
+    /* 当前这个对话一句还没问过 —— 它是「一条空白对话」, 在侧栏里**占一行**, 名字就叫「新会话」,
+       钉在最上面、并且是当前高亮那一行(照 dsh 的做法: 那边叫 blank session, 只显示当前这条空白的,
+       老的空壳不显示)。一问出去, 这一行当场换成问句起的名字(见 ensureSid), 不会多出第二行。
+       为什么要有它: 一条都没有的侧栏看着像坏了 —— 明明正开着新对话, 左边却空着。
+       正在跑题的当下不算空白(!asking): 那一行的名字早发出去了, 再叠一行「新会话」就重了。 */
+    if(NEWCHAT || (HIST_OK && !D.asks.length && !asking)){
+      h+='<li class="row on" title="新会话"><span class="t">新会话</span></li>';
+    }
+    SIDS.forEach(function(s){
+      if(s.pin) return;                       // 置顶的另起一组, 不按时间摊(否则它会被埋在老对话堆里)
+      // at 空/坏值 -> daysAgo 给 NaN -> 落不进前两档, 归「更早」(比丢掉强)
+      var g=groupOf(daysAgo(s.at));
+      (buckets[g]||buckets["更早"]).push(s);
+    });
+    var pinned=SIDS.filter(function(s){ return !!s.pin; });
+    if(pinned.length){
+      h+='<li class="grp">置顶</li>';
+      pinned.forEach(function(s){ h+=sessRow(s); });
+    }
+    order.forEach(function(g){
+      if(!buckets[g].length) return;
+      h+='<li class="grp">'+g+'</li>';
+      buckets[g].forEach(function(s){ h+=sessRow(s); });
+    });
+    var ul=$("#sessList");
+    ul.innerHTML=h;
+    ul.querySelectorAll("[data-sid]").forEach(function(el){
+      el.onclick=function(){
+        var id=el.getAttribute("data-sid");
+        // NEWCHAT 时点原来那个对话也要能回去 —— 那时 SID 还指着它, 光比 id 会把这一下吞掉
+        if(id!==SID || NEWCHAT) switchSid(id);
+      };
+    });
+    ul.querySelectorAll("[data-more]").forEach(function(b){
+      b.onclick=function(ev){
+        ev.stopPropagation();               // 别让它顺带把这一行也切过去
+        sidMenuOpen(b, b.getAttribute("data-more"));
+      };
+    });
+  }
+
+  /* 「⋯」菜单: 一次只开一个, 点别处/滚列表/改窗口都收掉 */
+  var MENU_SID=null;                         // 菜单此刻是给哪个对话开的
+  function sidMenuOpen(btn, id){
+    var m=$("#sidMenu"), e=sidFind(id);
+    if(!e) return;
+    if(MENU_SID===id && m.classList.contains("show")) return sidMenuClose();   // 再点一下 = 收起
+    MENU_SID=id;
+    m.querySelector('[data-act="pin"]').textContent = e.pin ? "取消置顶" : "置顶";
+    m.classList.add("show");
+    // 摆在按钮右下; 顶到窗口右/下边就往回收, 别被切掉
+    var r=btn.getBoundingClientRect(), w=m.offsetWidth, hh=m.offsetHeight;
+    m.style.left=Math.max(8, Math.min(r.right-w, window.innerWidth-w-8))+"px";
+    m.style.top =Math.max(8, Math.min(r.bottom+4, window.innerHeight-hh-8))+"px";
+    sidMoreMark(btn);
+  }
+  function sidMoreMark(btn){
+    document.querySelectorAll('[data-more][aria-expanded="true"]').forEach(function(b){
+      b.setAttribute("aria-expanded","false");
+    });
+    if(btn) btn.setAttribute("aria-expanded","true");
+  }
+  function sidMenuClose(){
+    MENU_SID=null;
+    $("#sidMenu").classList.remove("show");
+    sidMoreMark(null);                      // 谁都不亮
+  }
+  document.addEventListener("click", function(e){
+    if($("#sidMenu").contains(e.target) || (e.target.closest && e.target.closest(".rowmore"))) return;
+    sidMenuClose();
+  });
+  $("#sessList").addEventListener("scroll", sidMenuClose);
+  window.addEventListener("resize", sidMenuClose);
+  $("#sidMenu").querySelectorAll("button").forEach(function(b){
+    b.onclick=function(){
+      var act=b.getAttribute("data-act"), id=MENU_SID;
+      sidMenuClose();
+      if(!id) return;
+      if(act==="pin") sidPin(id);
+      else if(act==="pdf") sidExportPdf(id);
+      else if(act==="del") sidAskDelete(id);
+    };
+  });
+  function sidPin(id){
+    var e=sidFind(id);
+    if(!e) return;
+    e.pin=!e.pin;
+    SIDS.sort(sidOrder); registryPut(); renderSessions();
+    toast(e.pin ? "已置顶这个对话" : "已取消置顶");
+  }
+
+  /* 导整个对话: 起一次浏览器现渲染, 所以要等几秒 —— 先给句话, 别让人以为点了没反应。
+     导的是**服务端存着的**那几题(不是屏幕上这份), 所以换个对话导也一样对。 */
+  function sidExportPdf(id){
+    var e=sidFind(id);
+    toast("正在导出这个对话…");
+    api("/api/pdf/conv",{method:"POST",body:JSON.stringify({session:id,title:(e&&e.title)||"对话"})})
+      .then(function(r){
+        if(r.__status!==200 || !r.ok) throw new Error((r&&r.error)||("HTTP "+r.__status));
+        pdfGrab(r.url);
+        toast("已导出 "+(r.asks||0)+" 题的 PDF");
+      })
+      .catch(function(err){ toast("没导成："+err.message); });
+  }
+
+  /* 删除一个对话: 把它**整个搬进垃圾桶**(状态卡/结论日志/流水一起), 活的那一侧当场清空 ——
+     所以给一道手打确认。7 天内能在「设置 → 垃圾桶」里捡回来, 过了才是真没了。
+     标题一起送过去: 后端只认 scope, 不送的话垃圾桶里那行就认不出是哪个对话。 */
+  var DEL_SID=null, DEL_TITLE="";
+  function sidAskDelete(id){
+    if(id===SID && asking) return toast("这一题还在跑, 先点「停止」");
+    var e=sidFind(id);
+    if(!e) return;
+    DEL_SID=id;
+    DEL_TITLE=e.title||"";
+    $("#delWho").textContent="这个对话："+(e.title||"新对话")+(id===SID?"（就是当前这个）":"");
+    $("#delInput").value="";
+    $("#delGo").disabled=true;
+    open("#mDel");
+    setTimeout(function(){ var n=$("#delInput"); if(n) n.focus(); }, 30);
+  }
+  $("#delInput").oninput=function(){ $("#delGo").disabled=(this.value.trim()!=="删除这个对话"); };
+  $("#delGo").onclick=function(){
+    var id=DEL_SID; if(!id) return;
+    var btn=this; btn.disabled=true; btn.textContent="正在清…";
+    api("/api/forget",{method:"POST",body:JSON.stringify({session:id,title:DEL_TITLE})}).then(function(j){
+      btn.textContent="确认删除";
+      if(j.__status!==200 || !j.ok){
+        btn.disabled=false;
+        return toast("没删成："+((j&&j.error)||"后端没回话"));
+      }
+      close($("#mDel"));
+      SIDS=SIDS.filter(function(x){ return x.id!==id; });
+      registryPut();
+      var c=j.cleared||{};
+      // 说清"进垃圾桶了"而不是"没了" —— 用户想反悔时得知道去哪儿捡
+      toast("已删除这个对话（结论 "+(c.session_claim||0)+" 条 · 检查点 "+(c.checkpoint||0)
+            +" 份 · 流水 "+(c.flow_file?"1 份":"0 份")+"）· "+(j.days||7)+" 天内在「设置 → 垃圾桶」里可恢复");
+      if(id!==SID){ renderSessions(); return; }
+      // 删的正是当前这个: 退到列表里的下一个; 一个都不剩就回主界面(理由同 newSidStart)
+      if(SIDS.length){ NEWCHAT=false; HIST_OK=false; sidUse(SIDS[0].id); D.asks=[]; renderAll(); renderSessions(); refreshHistory(); }
+      else { NEWCHAT=true; HIST_OK=false; SID=freshId(); D.asks=[]; $("#q").value=""; renderAll(); renderSessions(); }
+      refreshStatus();
+    }).catch(function(){
+      btn.disabled=false; btn.textContent="确认删除";
+      toast("后端连不上（:8780 起了没？）");
+    });
+  };
+  /* 换对话: 先把上一个的题清干净再拉新账 —— 两边都不留对方的影子 */
+  function switchSid(id){
+    if(asking) return toast("这一题还在跑, 先点「停止」");
+    if(!sidFind(id)) return;
+    NEWCHAT=false; HIST_OK=false;      // 账还没拉回来, 先别摆「新会话」那一行(见 HIST_OK 的注释)
+    sidUse(id);
+    D.asks=[];
+    renderAll(); renderSessions();
+    refreshHistory();      // 这个对话自己的题
+    refreshStatus();       // 平台冷却也是按会话算的, 换了对话灯要重画
+    if($("#q")) $("#q").focus();
+  }
+  /* 「开启新对话」= 回主界面(不是马上造一个空对话摆在左边): 会话号等第一句问出去才发。 */
+  function newSidStart(){
+    if(asking) return toast("这一题还在跑, 先点「停止」");
+    NEWCHAT=true; HIST_OK=false;
+    D.asks=[];
+    $("#q").value="";
+    renderAll(); renderSessions();
+    if($("#q")) $("#q").focus();
+  }
+  /* 从主界面上问第一句: 到这一刻才真开一个对话(发号 + 登记 + 按这一句起个名字)。
+     登记**在发问这一下就做**, 不等答完 —— 一题要爬几分钟, 这中间刷新一下页面,
+     侧栏里要是还没有这一行, 用户就再也点不回这个对话了(那一行不在, 会话号又只在地址栏外的地方躺着)。 */
+  function ensureSid(q){
+    if(NEWCHAT){ NEWCHAT=false; SID=freshId(); }
+    sidUse(SID);                                    // 登记 + 提到最前(建的时候就有名字, 见下)
+    var e=sidFind(SID), t=String(q||"").replace(/\s+/g," ").trim().slice(0,26);
+    /* 名字只给"还没有题的新对话"起: 老对话的名字是它最早那句问话, 别被后面这一句顶掉 */
+    if(e && !e.title && t && !(D.asks && D.asks.length)) e.title=t;
+    registryPut(); renderSessions();
+    refreshStatus();          // 冷却是按会话算的, 换了新会话要按新账问一遍
+    return SID;
+  }
+  /* 刷新/重开页面之后, 把这个对话**正在跑的那一题接回来**。
+     题不会因为刷新就没(后端那条线程照跑), 可页面上要是接不回来, 看着就是"问出去的东西凭空消失了" ——
+     而且这个会话还占着, 再问一题后端会回 429「本题还在跑」, 用户只看见一句没头没脑的错。 */
+  function attachRunning(){
+    return api("/api/running?session="+encodeURIComponent(SID)).then(function(r){
+      if(!r || !r.running || !r.job) return null;
+      pending={q:r.question||"", mode:r.mode||""};
+      liveReset();
+      (r.events||[]).forEach(applyLive);   // 已经发生的那些事件照着重放: 爬取步骤/草稿/累计消耗都接得上
+      setAsking(true);
+      renderAll(); scrollBottom();
+      return pollJob(r.job, r.cursor||0);
+    }).then(function(){
+      if(!asking) return;
+      setAsking(false); pending=null; live=null;
+      renderAll(); sidRemember(); renderSessions(); refreshStatus();
+    }).catch(function(){});
+  }
+
+  /* ---------- 引用 ---------- */
+  function citeMap(ask){
+    var m={}; ask.cites.forEach(function(c){ m[c.id]=c; }); return m;
+  }
+  /* 库内 id 是**全表全局号**(所有题共用一张表), 直接显示会让人误以为是"第几条证据"。
+     这里按它在答案里**第一次出现**的先后, 给一个本题内的序号; 全局号只在悬停提示里出现。 */
+  var LOCAL={};
+  function localIndex(ask){
+    var known={}, n=0, re=/\[\s*id\s*=\s*([^\]]+?)\s*\]/g, m;
+    ask.cites.forEach(function(c){ known[c.id]=1; });
+    LOCAL={id2n:{}, order:[]};
+    while((m=re.exec(String(ask.answer||"")))){
+      parseIds(m[1]).forEach(function(i){
+        if(!known[i] || LOCAL.id2n[i]) return;
+        LOCAL.id2n[i]=++n; LOCAL.order.push(i);
+      });
+    }
+    ask.cites.forEach(function(c){          // 答案里没显式标到的引用, 排在后面
+      if(!LOCAL.id2n[c.id]){ LOCAL.id2n[c.id]=++n; LOCAL.order.push(c.id); }
+    });
+    return LOCAL;
+  }
+  function localTag(id){ return "本题第 "+(LOCAL.id2n[id]||"?")+" 条"; }
+  function labelOf(c){                      // 没有标题的多是"楼内回复/视频评论", 用正文首句兜底
+    var t=(c.title||"").trim();
+    if(t) return t;
+    var s=String(c.text||"").replace(/\s+/g," ").trim();
+    return s ? s.slice(0,26)+(s.length>26?"…":"") : "(无正文)";
+  }
+  function parseIds(str){
+    var out=[];
+    str.split(/[,，、;；\/\s]+/).forEach(function(tok){
+      if(!tok) return;
+      if(/^\d+$/.test(tok)) out.push(+tok);
+      else { var r=/^(\d+)\s*[-–~]\s*(\d+)$/.exec(tok);
+             if(r){ for(var i=+r[1]; i<=+r[2] && i<=+r[1]+200; i++) out.push(i); } }
+    });
+    return out;
+  }
+
+  /* ---------- markdown（小渲染器，只认本项目的答案格式） ---------- */
+  function inline(t){
+    t=esc(t);
+    t=t.replace(/\[\s*id\s*=\s*([^\]]+?)\s*\]/g,function(m,g){
+      g=g.replace(/&quot;|&#39;/g,'"');         // esc 已把引号转成实体, 这儿还原成原来的写法, 下面照旧剥引号
+      var ids=parseIds(g.replace(/"/g,""));
+      var nums=ids.map(function(i){ return LOCAL.id2n[i]||"?"; }).join(",");
+      var tip=ids.map(function(i){ return "本题第 "+(LOCAL.id2n[i]||"?")+" 条（库内 #"+i+"）"; }).join("、");
+      return '<span class="cite" data-ids="'+g.replace(/"/g,"")+'" title="'+esc(tip)+'">['+nums+']</span>';
+    });
+    t=t.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+    return t;
+  }
+  /* 表格认不认: 一行以 | 起头、下一行是 |---|---| 那种分隔行 —— 两条都满足才当表格。
+     模型排对照表常用「| 维度 | A | B |」, 认出来单独走表格那条路(见 md)。 */
+  function mdSep(ln){ return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(ln); }
+  function mdCells(ln){
+    return ln.replace(/^\s*\|/,"").replace(/\|\s*$/,"").split("|").map(function(c){ return c.trim(); });
+  }
+  function mdTable(head, sep, rows){
+    var al=sep.map(function(c){                       // :---: 居中 / ---: 右对齐 / 其余左对齐
+      var l=/^:/.test(c), r=/:$/.test(c);
+      return (l&&r)?"center":(r?"right":(l?"left":""));
+    });
+    function cell(tag,c,k){
+      var a=al[k];
+      return "<"+tag+(a&&a!=="left"?' style="text-align:'+a+'"':"")+">"+inline(c)+"</"+tag+">";
+    }
+    return '<table class="mdt"><thead><tr>'+head.map(function(c,k){ return cell("th",c,k); }).join("")
+      +'</tr></thead><tbody>'
+      +rows.map(function(r){ return "<tr>"+r.map(function(c,k){ return cell("td",c,k); }).join("")+"</tr>"; }).join("")
+      +"</tbody></table>";
+  }
+  function md(src){
+    var lines=String(src||"").split(/\r?\n/), out=[], ul=false, i;
+    function closeUl(){ if(ul){ out.push("</ul>"); ul=false; } }
+    for(i=0;i<lines.length;i++){
+      var ln=lines[i], m;
+      if(!ln.trim()){ closeUl(); continue; }
+      if(/^\s*\|/.test(ln) && i+1<lines.length && mdSep(lines[i+1])){
+        closeUl();
+        var head=mdCells(ln), sep=mdCells(lines[i+1]), body=[];
+        for(i+=2; i<lines.length && /\|/.test(lines[i]) && lines[i].trim(); i++) body.push(mdCells(lines[i]));
+        i--;                                          // 外层 for 还会 +1: 从表格后第一行接着走
+        out.push(mdTable(head,sep,body));
+        continue;
+      }
+      if((m=/^###\s+(.*)$/.exec(ln))){ closeUl(); out.push("<h3>"+inline(m[1])+"</h3>"); continue; }
+      if((m=/^##\s+(.*)$/.exec(ln))){ closeUl(); out.push("<h2>"+inline(m[1])+"</h2>"); continue; }
+      if((m=/^#\s+(.*)$/.exec(ln))){ closeUl(); out.push("<h1>"+inline(m[1])+"</h1>"); continue; }
+      if(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(ln)){ closeUl(); out.push("<hr>"); continue; }
+      if((m=/^[-*]\s+(.*)$/.exec(ln))){
+        if(!ul){ out.push("<ul>"); ul=true; }
+        out.push("<li>"+inline(m[1])+"</li>"); continue;
+      }
+      closeUl(); out.push("<p>"+inline(ln)+"</p>");
+    }
+    closeUl(); return out.join("\n");
+  }
+
+  /* ---------- 图表（浅色口径） ---------- */
+  var PAL={NGA:"#e0a83a", bilibili:"#a855f7", "负":"#dc2626", "中":"#98a2b3", "正":"#16a34a"};
+  var AX={axisLine:"#e3e8ef", axisLabel:"#98a2b3", splitLine:"#eef1f6", label:"#344054"};
+  function hasEcharts(){ return typeof window.echarts!=="undefined"; }
+  /* 图表实例账本。renderAll 每次都把 #wrap 整块重画 —— 旧画布随之从页面上消失, 可
+     ECharts 实例还挂在它自己的内部表里(连带着 canvas、resize 监听、定时动画)。不 dispose,
+     就是「问一题攒一批、切一次会话再攒一批」, 内存只涨不落, 久了滚起来发涩。
+     所以: 一律走 mkChart 建、重画之前先 dropCharts 清。 */
+  var CHARTS=[];
+  function mkChart(el){ var ch=echarts.init(el,null,{renderer:"canvas"}); CHARTS.push(ch); return ch; }
+  function dropCharts(){
+    for(var i=0;i<CHARTS.length;i++){ try{ CHARTS[i].dispose(); }catch(e){} }
+    CHARTS=[];
+  }
+  function plotFallback(el,text){
+    el.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;'
+      +'text-align:center;color:#667085;font-size:12.5px;padding:16px;line-height:1.7">'+esc(text)+'</div>';
+  }
+  function pie(el,data,unit){
+    if(!hasEcharts()){
+      plotFallback(el,data.map(function(d){
+        return d.name+" "+d.value+unit+"（"+pct(d.value,data.reduce(function(a,b){return a+b.value;},0))+"）";
+      }).join("　"));
+      return null;
+    }
+    var ch=mkChart(el);
+    ch.setOption({
+      tooltip:{trigger:"item",formatter:"{b}: {c}"+unit+" ({d}%)",
+               backgroundColor:"#ffffff", borderColor:"#e3e8ef", textStyle:{color:"#1f2430"}},
+      legend:{bottom:0,textStyle:{color:"#667085",fontSize:11},itemWidth:9,itemHeight:9},
+      series:[{type:"pie",radius:["42%","66%"],center:["50%","42%"],
+        itemStyle:{borderColor:"#ffffff",borderWidth:2},
+        label:{color:AX.label,fontSize:11,formatter:"{b} {d}%"},
+        labelLine:{lineStyle:{color:"#c7d0dd"}},
+        data:data.map(function(d){ return {name:d.name,value:d.value,itemStyle:{color:PAL[d.name]}}; })}]
+    });
+    return ch;
+  }
+  function line(el,pts){
+    if(!hasEcharts()){
+      plotFallback(el,"近 90 天逐日讨论量，峰值 "+Math.max.apply(null,pts.map(function(p){return p[1];}))+" 条");
+      return null;
+    }
+    var ch=mkChart(el);
+    ch.setOption({
+      grid:{left:44,right:16,top:16,bottom:28},
+      tooltip:{trigger:"axis",backgroundColor:"#ffffff",borderColor:"#e3e8ef",textStyle:{color:"#1f2430"}},
+      xAxis:{type:"category",data:pts.map(function(p){return p[0].slice(5);}),
+        axisLine:{lineStyle:{color:AX.axisLine}},axisLabel:{color:AX.axisLabel,fontSize:10}},
+      yAxis:{type:"value",splitLine:{lineStyle:{color:AX.splitLine}},
+        axisLabel:{color:AX.axisLabel,fontSize:10}},
+      series:[{type:"line",smooth:true,symbolSize:4,data:pts.map(function(p){return p[1];}),
+        lineStyle:{color:"#2563eb",width:2},itemStyle:{color:"#2563eb"},
+        areaStyle:{color:"rgba(37,99,235,.10)"}}]
+    });
+    return ch;
+  }
+
+  /* 柱状图: series=[{name,data,color,stack}]。stack 同名则堆叠。 */
+  function barPlot(el,cats,series){
+    if(!hasEcharts()){
+      plotFallback(el,cats.map(function(c,i){
+        return c+"：" + series.map(function(s){ return s.name+" "+s.data[i]; }).join(" · ");
+      }).join("　"));
+      return null;
+    }
+    var ch=mkChart(el);
+    ch.setOption({
+      grid:{left:8,right:12,top:series.length>1?26:10,bottom:6,containLabel:true},
+      tooltip:{trigger:"axis",axisPointer:{type:"shadow"},
+        backgroundColor:"#ffffff",borderColor:"#e3e8ef",textStyle:{color:"#1f2430",fontSize:12}},
+      legend:series.length>1?{top:0,right:0,itemWidth:9,itemHeight:9,
+        textStyle:{color:"#667085",fontSize:11}}:{show:false},
+      xAxis:{type:"category",data:cats,axisTick:{show:false},
+        axisLine:{lineStyle:{color:AX.axisLine}},axisLabel:{color:AX.axisLabel,fontSize:10}},
+      yAxis:{type:"value",minInterval:1,splitLine:{lineStyle:{color:AX.splitLine}},
+        axisLabel:{color:AX.axisLabel,fontSize:10}},
+      series:series.map(function(s){
+        return {name:s.name,type:"bar",stack:s.stack||undefined,barMaxWidth:24,
+          itemStyle:{color:s.color,borderRadius:s.stack?0:[3,3,0,0]},
+          data:s.data};
+      })
+    });
+    return ch;
+  }
+
+  /* 横条: items=[{name,value,color}]。名字在左、数值在右 —— 适合"漏斗各段""排行"这类带长标签的。 */
+  function hbarPlot(el,items,unit){
+    unit=unit||"";
+    if(!hasEcharts()){
+      plotFallback(el,items.map(function(d){ return d.name+" "+d.value+unit; }).join("　"));
+      return null;
+    }
+    var ch=mkChart(el);
+    ch.setOption({
+      grid:{left:6,right:52,top:6,bottom:6,containLabel:true},
+      tooltip:{trigger:"item",backgroundColor:"#ffffff",borderColor:"#e3e8ef",
+        textStyle:{color:"#1f2430",fontSize:12},formatter:"{b}: {c}"+unit},
+      xAxis:{type:"value",show:false,max:Math.max.apply(null,items.map(function(d){return d.value;}).concat([1]))},
+      yAxis:{type:"category",inverse:true,data:items.map(function(d){return d.name;}),
+        axisLine:{show:false},axisTick:{show:false},axisLabel:{color:AX.label,fontSize:11}},
+      series:[{type:"bar",barMaxWidth:15,
+        data:items.map(function(d){ return {value:d.value,itemStyle:{color:d.color,borderRadius:3}}; }),
+        label:{show:true,position:"right",color:AX.label,fontSize:11,formatter:"{c}"+unit}}]
+    });
+    return ch;
+  }
+
+  /* 堆叠面积: 同一个时间轴上按平台铺开 —— 看"这题是最近在吵, 还是老帖在被翻"。 */
+  function areaPlot(el,cats,series){
+    if(!hasEcharts()){
+      plotFallback(el,"按平台逐日分布，共 "+cats.length+" 个有样本的日期");
+      return null;
+    }
+    var ch=mkChart(el);
+    ch.setOption({
+      grid:{left:8,right:12,top:26,bottom:6,containLabel:true},
+      tooltip:{trigger:"axis",backgroundColor:"#ffffff",borderColor:"#e3e8ef",
+        textStyle:{color:"#1f2430",fontSize:12}},
+      legend:{top:0,right:0,itemWidth:9,itemHeight:9,textStyle:{color:"#667085",fontSize:11}},
+      xAxis:{type:"category",boundaryGap:false,data:cats,
+        axisLine:{lineStyle:{color:AX.axisLine}},axisLabel:{color:AX.axisLabel,fontSize:10}},
+      yAxis:{type:"value",minInterval:1,splitLine:{lineStyle:{color:AX.splitLine}},
+        axisLabel:{color:AX.axisLabel,fontSize:10}},
+      series:series.map(function(s){
+        return {name:s.name,type:"line",stack:"d",smooth:true,showSymbol:false,symbolSize:3,
+          lineStyle:{color:s.color,width:1.5},itemStyle:{color:s.color},
+          areaStyle:{color:s.color,opacity:0.3},data:s.data};
+      })
+    });
+    return ch;
+  }
+
+  /* 词云: 要 echarts-wordcloud 那个插件。没加载成的话 setOption 会抛, 兜回文字排。 */
+  var WCPAL=["#2563eb","#7c3aed","#0891b2","#16a34a","#d97706","#dc2626","#a855f7","#0d9488"];
+  function wordCloudPlot(el,words){
+    if(!hasEcharts()||!words.length){
+      plotFallback(el,words.slice(0,24).map(function(w){ return w.name; }).join("　"));
+      return null;
+    }
+    try{
+      var ch=mkChart(el);
+      ch.setOption({
+        tooltip:{show:true,backgroundColor:"#ffffff",borderColor:"#e3e8ef",borderWidth:1,
+          textStyle:{color:"#1f2430",fontSize:12}},
+        series:[{type:"wordCloud",shape:"circle",left:"center",top:"center",
+          width:"96%",height:"96%",sizeRange:[12,36],rotationRange:[-30,30],rotationStep:15,
+          gridSize:8,drawOutOfBound:false,
+          textStyle:{fontFamily:"inherit",fontWeight:"bold",
+            color:function(w){ return WCPAL[words.map(function(x){return x.name;}).indexOf(w.name)%WCPAL.length]; }},
+          emphasis:{textStyle:{shadowBlur:12,shadowColor:"rgba(37,99,235,.35)"}},
+          data:words}]
+      });
+      return ch;
+    }catch(e){
+      plotFallback(el,words.slice(0,24).map(function(w){ return w.name; }).join("　"));
+      return null;
+    }
+  }
+
+  /* 横向时间轴: 横轴是时间, 每类事件一条泳道, 样本按它自己发布的时刻落在泳道上。
+     泳道分得细是为了让"官方动作"和"玩家反应"分开 —— 官号那两条自己一条, 一眼看出谁先动。
+     两个坑(2026-09-17 用户:"这时间轴你自己看了没 这是人看的吗"):
+       ① 老帖能翻到七年前, 而样本几乎全堆在最近一个月 —— 整幅铺开就是右边挤成一条线、左边一大片空白;
+       ② 同一天几十条样本落在一起完全重叠, 181 条看着只有十几个点, 反而把量给画小了。
+     所以: 同一天同一条泳道并成一颗(点大小＝那天的条数), 并默认放大到样本最密的那一段,
+     窗口外还有多少条写在图注里 —— 不藏, 也不让人自己去猜。 */
+  var LANE_ORDER=["官号公告","官号回复","NGA 主帖","NGA 回复","B站视频","B站评论"];
+  var LANE_COLOR={"官号公告":"#dc2626","官号回复":"#f97316",
+                  "NGA 主帖":"#e0a83a","NGA 回复":"#c98b1f",
+                  "B站视频":"#a855f7","B站评论":"#c084fc"};
+
+  function tsOf(s){
+    if(!s) return NaN;
+    return Date.parse(String(s).slice(0,19).replace(" ","T"));
+  }
+  function laneOf(r){
+    var k=r.kind||"";
+    if(k==="official_post") return "官号公告";
+    if(k==="official_reply") return "官号回复";
+    if(r.platform==="NGA") return k==="reply" ? "NGA 回复" : "NGA 主帖";
+    return k==="reply" ? "B站评论" : "B站视频";
+  }
+
+  var TL_DAY=86400000;
+  var TL_MERGE=2;   // 邻近到什么程度算"一段": 与上一处动静隔开不到 2 天就接进同一根长条(中间最多空一天)
+  function tlDay(t){                        // 归到"本机这一天"的零点: 轴上与气泡上都按同一天显示
+    var d=new Date(t);
+    return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+  }
+  /* 默认窗口: 从最近那条样本往回找, 取第一个能装下大半样本的档(7/14/30/60/90/180/365 天)。
+     装不下(样本本来就摊得均匀)就整幅铺开 —— 摊得匀的时候整幅铺开本来就好看。 */
+  function tlWindow(ts){
+    var mx=Math.max.apply(null,ts), mn=Math.min.apply(null,ts), spans=[7,14,30,60,90,180,365];
+    for(var i=0;i<spans.length;i++){
+      var s=mx-spans[i]*TL_DAY;
+      var c=ts.filter(function(t){ return t>=s; }).length;
+      if(c===ts.length) return {s:mn, e:mx, days:0, out:0};
+      if(c/ts.length>=0.55) return {s:s, e:mx, days:spans[i], out:ts.length-c};
+    }
+    return {s:mn, e:mx, days:0, out:0};
+  }
+
+  function timelinePlot(el,ask){
+    var rows=ask.cites.concat(ask.uncited);
+    var isCited={}; ask.cites.forEach(function(c){ isCited[c.id]=1; });
+    var lanes={}, ts=[], n=0;
+    rows.forEach(function(r){
+      var t=tsOf(r.published_at);
+      if(isNaN(t)) return;
+      var ln=laneOf(r);
+      (lanes[ln]=lanes[ln]||[]).push({r:r,t:t});
+      ts.push(t); n++;
+    });
+    var used=LANE_ORDER.filter(function(x){ return lanes[x]; });
+    if(!n||!used.length){ plotFallback(el,"没有带发布时刻的样本，画不了时间轴"); return null; }
+    if(!hasEcharts()){ plotFallback(el,"共 "+n+" 条带时间的样本，分布看下方引用列表"); return null; }
+
+    var win=tlWindow(ts);
+    var ct=tsOf(ask.collected_at);
+    if(!isNaN(ct) && ct>win.e) win.e=ct;         // 「本次采集」那条虚线不能被挡在窗口外
+    /* 窗口两端也收到「整天」上 —— 条是整天一根, 窗口要是切在一天当中, 骑在边上的那根会被整根丢掉
+       (库里自定义图形跨出可视窗就直接不画了)。收整天后「最近 7 天」也真是 7 个整天。 */
+    win.s=tlDay(win.s); win.e=tlDay(win.e)+TL_DAY;
+    /* 轴的两端自己钉死, 默认视窗按百分比给 —— 不依赖库内部去猜数据范围(它把 markLine 也算进去的时候,
+       放大出来的那一段就会偏)。
+       而且两端都收到「整天」上: 条是按天画的, 尾巴伸到当天 24 点, 轴要是停在采集那一刻(中午),
+       最后一天那根整根落在轴外, 库会当它不存在 —— 整天看不见, 不是数据没了。 */
+    var lo=tlDay(Math.min.apply(null,ts)), hi=tlDay(Math.max.apply(null,ts))+TL_DAY;
+    if(!isNaN(ct)) hi=Math.max(hi, tlDay(ct)+TL_DAY);
+    if(hi<=lo) hi=lo+TL_DAY;
+    function pctOf(t){ return Math.max(0, Math.min(100, (t-lo)/(hi-lo)*100)); }
+
+    /* 照用户给的「版本日历」参考: **邻近的日子接成一根长条**(中间最多空一天), 条上写这段共几条;
+       那一根根细的**点落在长条上面** —— 一天一个点, 点越大那天样本越多, 深色圈的是被答案引用过的。
+       长条按"天"给长短, 但真画出来时不短于 3 像素 —— 缩到七年前那个尺度时一天的宽度不到一个像素,
+       不兜这一下整张图会变成空白(不是数据没了, 是画不出来)。 */
+    function mdd(t){ var d=new Date(t); return ("0"+(d.getMonth()+1)).slice(-2)+"/"+("0"+d.getDate()).slice(-2); }
+    /* 悬停时把那一段**爬到了啥内容**列出来 —— 用户原话:「这块爬到了啥内容直接写出来展示」
+       「不是让你 13 5, 让你写内容」。一行一条: 日子 + 标题 + 正文头一句, 被答案引用过的标出来;
+       列不下就如实说还剩几条(不拿数字糊弄)。 */
+    /* 爬回来的正文里混着**占位符**: B 站视频没写简介时, 爬虫存的就是一个横杠(全库 97 行, 占 1.5%)。
+       那是"没有", 不是内容 —— 照抄上去就是气泡里光秃秃一个「-」, 一眼就是废物(用户原话「为啥有这种东西？？？」)。
+       这类一律当空, 交给下面"退回写标题"那条接住: 视频的标题才是"这条是啥"。 */
+    function tlReal(v){
+      var s=String(v==null?"":v).replace(/\s+/g," ").trim();
+      if(/^[-—–－/]{1,4}$/.test(s)) return "";
+      if(/^(无|暂无|null|none|n\/a|undefined)$/i.test(s)) return "";
+      return s;
+    }
+    function tlItems(rows, cap){
+      var out=[], n=Math.min(rows.length, cap), i;
+      for(i=0;i<n;i++){
+        var r=rows[i]||{}, c=isCited[r.id];
+        var t=tlReal(r.title);
+        var s=tlReal(r.text);
+        /* 正文优先: 官号那类行的标题是爬回来时拼的(「官号·平峰·9月2日·评论 941」), 那是元信息不是内容;
+           正文才是"这块爬到了啥"。没有正文的(论坛帖、图集那种)才退回标题。 */
+        if(s.length>44) s=s.slice(0,44)+"…";
+        if(t.length>30) t=t.slice(0,30)+"…";
+        out.push('<div style="margin-top:3px'+(c?';color:#2563eb':'')+'">'
+          + '<span style="color:#98a2b3">'+mdd(tsOf(r.published_at))+'</span> '
+          + (c? '<b>[引用]</b> ' : '')
+          + (s ? esc(s) : '<b>'+esc(t || "(无正文)")+'</b>')
+          + '</div>');
+      }
+      if(rows.length>cap)
+        out.push('<div style="margin-top:3px;color:#98a2b3">…还有 '+(rows.length-cap)+' 条</div>');
+      return out.join("");
+    }
+    var H=Math.max(180, Math.min(360, 76+used.length*46));  // 来源少就别占着高个子
+    var band=(H-26-30-26)/used.length;                      // 去掉上下留白与轴上那行日期
+    var barH=Math.max(12, Math.min(22, band*0.42));
+    var dotLift=barH/2+7;                                   // 点抬到长条上面去
+    el.style.height=H+"px";
+
+    var bars=[], dots=[];
+    used.forEach(function(ln, li){
+      var bk={}, order=[];
+      lanes[ln].forEach(function(e){
+        var k=tlDay(e.t);
+        if(!bk[k]){ bk[k]={x:k, c:0, ci:0, like:0, reply:0, rows:[]}; order.push(k); }
+        var b=bk[k];
+        /* 点赞与回复各记各的 —— 加在一起是笔糊涂账: 两边平台本来就不是同一个指标(B站看点赞、
+           论坛看回复), 合出来的数谁也解释不了。谁有值就显示谁。 */
+        b.c++; b.like+=(e.r.like_count||0); b.reply+=(e.r.reply_count||0);
+        b.rows.push(e.r);
+        if(isCited[e.r.id]) b.ci++;
+      });
+      order.sort(function(a,b){ return a-b; });
+      var col=LANE_COLOR[ln];
+      order.forEach(function(k){
+        var b=bk[k], c=b.ci>0;
+        /* 散点只有两维: [时刻, 第几行]。写成 [时刻, 时刻, 行] 的话 y 会当成一个巨大的时间戳,
+           点全被甩到行外 —— 图上就是"一个点都没有"(而且不报错)。 */
+        dots.push({value:[b.x+TL_DAY*0.5, li], __b:b, __lane:ln,
+          symbolSize:Math.round(6+Math.min(10, Math.log(b.c+1)*2.2)),
+          symbolOffset:[0, -dotLift],
+          itemStyle:{color:col, opacity:1,
+            borderColor:c?"#1f2430":"rgba(31,36,48,.16)", borderWidth:c?1.4:1}});
+      });
+      var g0=null, g1=0, gc=0, gci=0, gd=0, grows=[];
+      function flush(){
+        if(g0===null) return;
+        bars.push({value:[g0+TL_DAY*0.14, g1+TL_DAY*0.86, li, String(gc)],
+          __span:[g0, g1], __n:gc, __ci:gci, __days:gd, __lane:ln, __rows:grows,
+          itemStyle:{color:col, opacity:0.32, borderColor:"transparent", borderWidth:0}});
+        g0=null; gc=0; gci=0; gd=0; grows=[];
+      }
+      order.forEach(function(k){
+        if(g0!==null && k-g1>TL_MERGE*TL_DAY) flush();
+        if(g0===null) g0=k;
+        g1=k; gc+=bk[k].c; gci+=bk[k].ci; gd++; grows=grows.concat(bk[k].rows);
+      });
+      flush();
+    });
+
+    var cap=$("#tl-cap-"+ask.id);
+    if(cap){
+      cap.innerHTML='一根条＝一段连着有动静的日子（条上是这段共几条，悬停看内容）；点＝那天的样本，'
+        + '点越大越多，深圈的是被引用过的。'
+        + (win.out ? '默认只摆最近 '+win.days+' 天，更早的 '+win.out+' 条在窗外（滚轮或滑块往回拖）。'
+                   : n+' 条按发布时刻摆开。');
+    }
+
+    var barSeries={name:"活跃期", type:"custom", encode:{x:[0,1], y:2}, data:bars,
+      /* 长条是「跨几天的区间」，而缩放默认的过滤是**按起点**看的：起点落在窗口外，整根就没了 ——
+         图上那一行只剩一排点、一根条都没有（实测：官号公告 / 官号回复那两根，起点在默认窗口左沿
+         之外）。过滤改成只丢「整根都在窗外」的，跨边的那根留着；露到格子外的部分靠 clip 切掉，
+         不让它从坐标区里爬出来压住左边的泳道名。 */
+      clip:true,
+      renderItem:function(p, api){
+        var li=api.value(2);
+        var p0=api.coord([api.value(0), li]), p1=api.coord([api.value(1), li]);
+        var w=Math.max(3, p1[0]-p0[0]);
+        var kids=[{type:"rect", shape:{x:p0[0], y:p0[1]-barH/2, width:w, height:barH, r:3},
+                   style:api.style()}];
+        if(w>=22){
+          kids.push({type:"text", style:{text:String(api.value(3)), x:p0[0]+w/2, y:p0[1],
+            textAlign:"center", align:"center", textVerticalAlign:"middle", verticalAlign:"middle",
+            fill:"#4a5568", font:"600 10px -apple-system,'Microsoft YaHei',sans-serif"}});
+        }
+        return {type:"group", children:kids};
+      }};
+    if(!isNaN(ct)){
+      barSeries.markLine={silent:true,symbol:"none",
+        label:{formatter:"本次采集",color:"#667085",fontSize:10,position:"insideEndTop"},
+        lineStyle:{color:"#9aa4b2",type:"dashed",width:1},data:[{xAxis:ct}]};
+    }
+
+    var winDays=(win.e-win.s)/TL_DAY;
+    var ch=mkChart(el);
+    ch.setOption({
+      /* 拖下面那个滑块 / 滚轮缩放时**不做补间动画**，当场到位。
+         长条是自定义图形（每次重画都是"当场移到新位置"），而散点是普通系列（默认会补间 300ms），
+         两边不同步就成"点追不上条"——拖得越快越明显。缩放要的是跟手，不是缓动，所以更新动画直接关掉；
+         首次画出来那下（animationDuration）照旧留着。 */
+      animationDurationUpdate:0,
+      grid:{left:8,right:16,top:26,bottom:30,containLabel:true},
+      dataZoom:[{type:"inside",filterMode:"weakFilter",start:pctOf(win.s),end:pctOf(win.e)},
+        {type:"slider",filterMode:"weakFilter",start:pctOf(win.s),end:pctOf(win.e),height:14,bottom:4,borderColor:"transparent",
+         fillerColor:"rgba(37,99,235,.10)",handleStyle:{color:"#98a2b3"},
+         textStyle:{color:"#98a2b3",fontSize:9},
+         labelFormatter:function(v){ var d=new Date(v); return d.getFullYear()+"/"+(d.getMonth()+1); }}],
+      tooltip:{trigger:"item",backgroundColor:"#ffffff",borderColor:"#e3e8ef",
+        /* 列出了内容就可能一大串, 框子封个顶让它自己滚, 别糊满整屏 */
+        extraCssText:"max-height:320px;overflow:auto;box-shadow:0 6px 20px rgba(31,36,48,.14);",
+        textStyle:{color:"#1f2430",fontSize:12},
+        formatter:function(p){
+          if(p.seriesName==="活跃期"){
+            var sp=p.data&&p.data.__span; if(!sp) return "";
+            return '<b>'+mdd(sp[0])+' – '+mdd(sp[1])+' · '+esc(p.data.__lane)+'</b>'
+              + tlItems(p.data.__rows||[], 8)
+              + '<div style="margin-top:5px;color:#667085">共 '+p.data.__n+' 条'
+              + (p.data.__ci? '，其中 '+p.data.__ci+' 条被答案引用' : '，都没被引用')+'</div>';
+          }
+          var b=p.data&&p.data.__b; if(!b) return "";
+          var dd=new Date(b.x);
+          var day=dd.getFullYear()+"/"+("0"+(dd.getMonth()+1)).slice(-2)+"/"+("0"+dd.getDate()).slice(-2);
+          var hot=[];
+          if(b.like) hot.push('点赞 '+b.like);
+          if(b.reply) hot.push('回复 '+b.reply);
+          return '<b>'+day+' · '+esc(p.data.__lane)+'</b>'
+            + tlItems(b.rows||[], 8)
+            + '<div style="margin-top:5px;color:#667085">共 '+b.c+' 条'
+            + (b.ci? '，其中 '+b.ci+' 条被答案引用' : '，都没被引用')+'</div>'
+            + (hot.length? '<div style="color:#667085">'+hot.join(' · ')+'</div>' : '');
+        }},
+      xAxis:{type:"time",min:lo,max:hi,position:"top",
+        axisTick:{show:false},axisLine:{lineStyle:{color:AX.axisLine}},
+        splitLine:{show:true,lineStyle:{color:AX.splitLine}},
+        axisLabel:{color:AX.axisLabel,fontSize:10,
+          formatter:(winDays>200
+            ? function(v){ var d=new Date(v); return d.getFullYear()+"/"+("0"+(d.getMonth()+1)).slice(-2); }
+            : function(v){ var d=new Date(v); return ("0"+(d.getMonth()+1)).slice(-2)+"/"+("0"+d.getDate()).slice(-2); })}},
+      yAxis:{type:"category",inverse:true,data:used,axisLine:{show:false},axisTick:{show:false},
+        splitLine:{show:true,lineStyle:{color:AX.splitLine}},
+        axisLabel:{color:AX.label,fontSize:11}},
+      series:[barSeries, {name:"样本", type:"scatter", z:3, data:dots}]
+    });
+    return ch;
+  }
+
+  function timelineBlock(ask){
+    return '<div class="chart wide"><div class="ct"><b>事件时间轴</b>'
+      + '<span class="badge info">按发布时刻</span></div>'
+      + '<div class="plot wide tall" id="tl-'+ask.id+'"></div>'
+      + '<div class="cap" id="tl-cap-'+ask.id+'"></div></div>';
+  }
+
+  function citedSenti(ask){
+    var s={"负":0,"中":0,"正":0,"无":0}, n=0;
+    ask.cites.forEach(function(c){ s[sentiName(c.senti)]++; n++; });
+    return {s:s,n:n};
+  }
+
+  /* ---------- 补充图表 ----------
+     只画载荷里真拿得到的东西: 数据不够的图**直接不出** —— 宁可少一张, 不画空图凑数。
+     老题的载荷里可能没有量化热度列, 那几张图自己就不出现, 不会显示一片空。 */
+  function platTally(rows){
+    var o={};
+    rows.forEach(function(r){ o[r.platform]=(o[r.platform]||0)+1; });
+    return o;
+  }
+
+  function figSpecs(ask){
+    var out=[], rows=ask.cites.concat(ask.uncited), nRows=rows.length;
+
+    /* 全量 vs 被引: 两根柱子差多远 = 模型从一整片声音里挑了多少 */
+    if(ask.need_sentiment && ask.senti){
+      var full=ask.senti, cit=citedSenti(ask);
+      out.push({title:"情绪分布对照", badge:"全量 vs 被引",
+        cap:'<b>全量</b> '+ask.stats.total+' 条（负 '+full["负"]+' / 中 '+full["中"]
+            +' / 正 '+full["正"]+'）vs <b>被引</b> '+cit.n+' 条（负 '+cit.s["负"]+' / 中 '+cit.s["中"]
+            +' / 正 '+cit.s["正"]+'）。差得越远，越是挑着引的。',
+        draw:function(el){ barPlot(el,["负","中","正"],[
+          {name:"全量样本",color:"#98a2b3",data:[full["负"],full["中"],full["正"]]},
+          {name:"被引证据",color:"#2563eb",data:[cit.s["负"],cit.s["中"],cit.s["正"]]}]); }});
+    }
+
+    /* 平台构成: 被引 / 没被引 —— 看模型更信哪一边 */
+    if(nRows){
+      var cp=platTally(ask.cites), up=platTally(ask.uncited);
+      var plats=Object.keys(cp).concat(Object.keys(up)).filter(function(v,i,a){ return a.indexOf(v)===i; });
+      if(plats.length){
+        out.push({title:"平台构成：被引 / 没被引", badge:"堆叠",
+          cap:'归档 '+nRows+' 条：引用 '+ask.cites.length+' / 未引 '+ask.uncited.length+'。看模型更信哪边。',
+          draw:function(el){ barPlot(el,plats,[
+            {name:"被引用",color:"#2563eb",stack:"s",data:plats.map(function(p){ return cp[p]||0; })},
+            {name:"没被引用",color:"#e3e8ef",stack:"s",data:plats.map(function(p){ return up[p]||0; })}]); }});
+      }
+    }
+
+    /* 逐轮产出: 柱子越来越矮 = 这题快爬干了, 后面的轮次在重复劳动 */
+    var rnds=roundsOf(ask.trace).filter(function(x){ return !x.blocked; });
+    if(rnds.length){
+      out.push({title:"逐轮新增样本", badge:"堆叠", wide:true,
+        cap:'每轮各捞回多少条<b>新</b>样本。柱子越来越矮 = 快爬干了。',
+        draw:function(el){ barPlot(el,rnds.map(function(x,i){ return "第 "+(i+1)+" 轮"; }),[
+          {name:"NGA",color:PAL.NGA,stack:"n",data:rnds.map(function(x){ return x.NGA?x.NGA.new:0; })},
+          {name:"bilibili",color:PAL.bilibili,stack:"n",data:rnds.map(function(x){ return x.bilibili?x.bilibili.new:0; })}]); }});
+    }
+
+    /* 采集漏斗: 抓到的 → 滤掉 → 入库 → 被引。"为什么样本只有这么点"在这张图里 */
+    var cand=0, stale=0, dup=0, got=0, blocked=0;
+    ask.trace.forEach(function(e){
+      if(e.event||!e.tool) return;
+      if(e.blocked){ blocked++; return; }
+      got+=e.new||0; stale+=e.stale||0; dup+=e.dup||0;
+      cand+=(e.new||0)+(e.stale||0)+(e.dup||0);
+    });
+    if(cand||ask.cites.length){
+      out.push({title:"采集漏斗", badge:"从爬到引用",
+        cap:'候选 → 滤掉过期/重复 → 新归档 → 真引用。'
+            +(blocked?'另有 '+blocked+' 次被预算护栏挡下，没算在内。':''),
+        draw:function(el){ hbarPlot(el,[
+          {name:"爬到的候选",value:cand,color:"#98a2b3"},
+          {name:"滤掉 · 过期",value:stale,color:"#d97706"},
+          {name:"滤掉 · 重复",value:dup,color:"#a855f7"},
+          {name:"新归档",value:got,color:"#16a34a"},
+          {name:"答案真引用",value:ask.cites.length,color:"#2563eb"}]," 条"); }});
+    }
+
+    /* 发布时间分布按平台拆开: 这题是最近在吵, 还是老帖在被翻 */
+    var daySeen={}, plSeen={};
+    rows.forEach(function(r){
+      var d=(r.published_at||"").slice(0,10);
+      if(!d) return;
+      daySeen[d]=1; plSeen[r.platform]=1;
+    });
+    var days=Object.keys(daySeen).sort(), pss=Object.keys(plSeen);
+    if(days.length>1){
+      out.push({title:"样本发布时间分布", badge:"按平台堆叠", wide:true,
+        cap:'按发布时间逐日铺开，两个平台分开画。',
+        draw:function(el){
+          areaPlot(el,days,pss.map(function(p){
+            var m={};
+            rows.forEach(function(r){
+              if(r.platform!==p) return;
+              var d=(r.published_at||"").slice(0,10);
+              if(d) m[d]=(m[d]||0)+1;
+            });
+            return {name:p,color:PAL[p]||"#94a3b8",data:days.map(function(d){ return m[d]||0; })};
+          }));
+        }});
+    }
+
+    /* 上下文用量: 离该档位的护栏还有多远 */
+    var u=ask.stats.usage||{}, ceil=ask.stats.ceiling||0;
+    if(u.prompt_tokens||ceil){
+      out.push({title:"上下文用量", badge:"对护栏上限",
+        cap:'实际喂进去的量 vs 该档位护栏。越贴近上限，后面几轮越可能被截。',
+        draw:function(el){ hbarPlot(el,[
+          {name:"实际输入",value:u.prompt_tokens||0,color:"#2563eb"},
+          {name:"模型输出",value:u.completion_tokens||0,color:"#7c3aed"},
+          {name:"该档位护栏",value:ceil,color:"#e3e8ef"}]); }});
+    }
+
+    /* 词云: 用 B 站视频的**原生标签**(社区自己打的词)。topic_tags 是我们自己的分类标签
+       ("强度""阵营/反讽"), 当词云没意义, 只作兜底 —— 所以这张图天然偏 B 站, 别当全平台看。 */
+    var wc={};
+    rows.forEach(function(r){
+      String(r.video_tags||r.tags||"").split(/[\s,，、;；|]+/).forEach(function(t){
+        t=t.trim();
+        if(t.length>1) wc[t]=(wc[t]||0)+1;
+      });
+    });
+    var words=Object.keys(wc).map(function(k){ return {name:k,value:wc[k]}; })
+              .sort(function(a,b){ return b.value-a.value; }).slice(0,60);
+    if(words.length>=5){
+      out.push({title:"视频标签词云", badge:words.length+" 个词",
+        cap:'<b>B 站视频的原生标签</b>（发布者自己打的），字越大出现越多。论坛没这种标签，'
+            +'这张图天然偏 B 站，别当全平台看。',
+        draw:function(el){ wordCloudPlot(el,words); }});
+    }
+
+    /* 热度榜: 两边用各自平台真有的那个指标(B站点赞 / 论坛回复), 不硬凑同一个数。
+       只有在载荷带了量化列时才出 —— 老题这些列是空的, 就自动不画。 */
+    var hot=ask.cites.map(function(c){
+      if((c.like_count||0)>0)  return {c:c, v:c.like_count,  u:"赞"};
+      if((c.reply_count||0)>0) return {c:c, v:c.reply_count, u:"回复"};
+      return null;
+    }).filter(Boolean).sort(function(a,b){ return b.v-a.v; });
+    if(hot.length>=3){
+      out.push({title:"被引证据 · 热度榜", badge:"按"+hot[0].u,
+        cap:'被引证据里热度最高的几条（B 站看点赞 / 论坛看回复）。两边量纲不同，别横向比大小。',
+        draw:function(el){ hbarPlot(el,hot.slice(0,8).map(function(x){
+          return {name:(x.c.title||x.c.text||"(无标题)").slice(0,13)+" · "+x.u,
+                  value:x.v, color:PAL[x.c.platform]||"#94a3b8"};
+        })); }});
+    }
+
+    return out;
+  }
+
+  /* 收进 <details>, **第一次展开时才真去画** —— 一屏底下挂十来张图会把答案淹掉, 长会话也拖。 */
+  function moreSection(ask,host){
+    var specs=figSpecs(ask);
+    if(!specs.length) return;
+    var inner="";
+    for(var i=0;i<specs.length;i++){
+      var s=specs[i];
+      inner+='<div class="chart'+(s.wide?" wide":"")+'">'
+        +'<div class="ct"><b>'+esc(s.title)+'</b>'+(s.badge?'<span class="badge">'+esc(s.badge)+'</span>':"")+'</div>'
+        +'<div class="plot'+(s.wide?" wide":"")+'" id="m'+i+'-'+ask.id+'"></div>'
+        +(s.cap?'<div class="cap">'+s.cap+'</div>':"")
+        +'</div>';
+    }
+    host.insertAdjacentHTML("beforeend",
+      '<details class="more"><summary>更多图表（'+specs.length+' 张）</summary>'
+      +'<div class="charts">'+inner+'</div></details>');
+    var det=host.querySelector("details.more");
+    if(!det) return;
+    det.addEventListener("toggle",function(){
+      if(!det.open||det.getAttribute("data-drawn")) return;
+      det.setAttribute("data-drawn","1");
+      for(var j=0;j<specs.length;j++){
+        var el=document.getElementById("m"+j+"-"+ask.id);
+        if(!el) continue;
+        try{ specs[j].draw(el); }catch(e){ plotFallback(el,"这张图没画出来："+e.message); }
+      }
+    });
+  }
+
+  function renderCharts(ask){
+    var host=$("#charts-"+ask.id);
+    var byp=ask.stats.by_platform;
+
+    if(!ask.need_sentiment){
+      host.innerHTML='<div class="nofig"><b>本题不出情绪图 —— 正常。</b><br>'
+        + '冷启动判定这题没有风向可看（问的是机制/攻略这类），所以不调打分、不画饼图凑数。</div>'
+        + '<div class="charts" id="charts1-'+ask.id+'"></div>';
+      var g=$("#charts1-"+ask.id);
+      g.innerHTML='<div class="chart"><div class="ct"><b>样本平台分布</b><span class="badge">全量</span></div>'
+        +'<div class="plot" id="p-'+ask.id+'"></div>'
+        +'<div class="cap">归档全部 <b>'+ask.stats.total+'</b> 条。</div></div>'
+        + timelineBlock(ask);
+      pie($("#p-"+ask.id), Object.keys(byp).map(function(k){return {name:k,value:byp[k]};}), " 条");
+      timelinePlot($("#tl-"+ask.id), ask);
+      moreSection(ask, host);
+      return;
+    }
+
+    var full=ask.senti, cit=citedSenti(ask);
+    var useFull=state.smallModel;
+    var data=useFull
+      ? [{name:"负",value:full["负"]},{name:"中",value:full["中"]},{name:"正",value:full["正"]}]
+      : [{name:"负",value:cit.s["负"]},{name:"中",value:cit.s["中"]},{name:"正",value:cit.s["正"]}];
+    var cap = useFull
+      ? '全量 <b>'+ask.stats.total+'</b> 条，小模型逐条打分。'
+      : '被引证据 <b>'+cit.n+'</b> 条，不冒充满量；每条都带 [id=N]。';
+
+    host.innerHTML=
+      '<div class="charts">'
+      + '<div class="chart"><div class="ct"><b>情绪分布</b><span class="badge '+(useFull?"ok":"warn")+'">'
+      +   (useFull?"全量样本":"被引证据")+'</span></div>'
+      +   '<div class="plot" id="s-'+ask.id+'"></div><div class="cap">'+cap+'</div></div>'
+      + '<div class="chart"><div class="ct"><b>样本平台分布</b><span class="badge">全量</span></div>'
+      +   '<div class="plot" id="p-'+ask.id+'"></div>'
+      +   '<div class="cap">归档全部 <b>'+ask.stats.total+'</b> 条 · NGA '
+      +   pct(byp.NGA||0,ask.stats.total)+' / B站 '+pct(byp.bilibili||0,ask.stats.total)+'</div></div>'
+      + '<div class="chart wide"><div class="ct"><b>讨论度趋势</b><span class="badge info">近 90 天</span></div>'
+      +   '<div class="plot wide" id="t-'+ask.id+'"></div>'
+      +   '<div class="cap">按发布时间逐日计数，'+ask.trend.length+' 天有样本。</div></div>'
+      + timelineBlock(ask)
+      + '</div>';
+
+    pie($("#s-"+ask.id),data," 条");
+    pie($("#p-"+ask.id),Object.keys(byp).map(function(k){return {name:k,value:byp[k]};})," 条");
+    line($("#t-"+ask.id),ask.trend.map(function(p){return [p.date,p.n];}));
+    timelinePlot($("#tl-"+ask.id), ask);
+    moreSection(ask, host);
+  }
+
+  /* ---------- trace ---------- */
+  /* 一行 = 一轮(同一轮里 NGA 与 bilibili 是并发取到的, 不该拆成两行); 被护栏挡下的尝试
+     不是数据, 单独列一句, 不混进表。 */
+  function roundsOf(trace){
+    var out=[], cur=null;
+    trace.forEach(function(e){
+      if(!e.tool) return;
+      if(e.blocked){ out.push({blocked:e}); return; }
+      if(!cur || cur[e.platform]!==undefined) { cur={}; out.push(cur); }
+      cur[e.platform]=e;
+    });
+    return out;
+  }
+  function renderTrace(ask){
+    if(ask.exp){
+      return '<details><summary>生成方式（实验版：未重新爬取）</summary><div class="inner">'
+        + '<div class="kv"><span>'+esc(ask.exp_note||"")+'</span></div></div></details>';
+    }
+    var rnds=roundsOf(ask.trace), body="", n=0, blocked=0, cum=0;
+    rnds.forEach(function(r){
+      if(r.blocked){ blocked++; return; }
+      n++;
+      var nga=r.NGA||{}, bili=r.bilibili||{};
+      var tot=Math.max(nga.ask_total||0, bili.ask_total||0);
+      if(tot) cum=tot;
+      var det="NGA 去重 "+((nga.dup)||0)+" / 过期 "+((nga.stale)||0)
+            + "；bilibili 去重 "+((bili.dup)||0)+" / 过期 "+((bili.stale)||0);
+      body+='<tr title="'+esc(det)+'"><td>第 '+n+' 轮</td>'
+          + '<td>'+(r.NGA? nga.new : "—")+'</td>'
+          + '<td>'+(r.bilibili? bili.new : "—")+'</td>'
+          + '<td>'+(cum||"—")+'</td></tr>';
+    });
+    var nudge=ask.trace.filter(function(e){return e.event==="ratio_nudge";});
+    var nudges=nudge.map(function(e){ return '<div class="nudge">· '+esc(e.note)+'</div>'; }).join("");
+    var u=ask.stats.usage;
+    return '<details><summary>采集过程（'+n+' 轮'
+      + (blocked? ' · 挡下 '+blocked+' 次':'')
+      + (nudge.length? ' · 配比提示 '+nudge.length+' 次':'') +'）</summary><div class="inner">'
+      + '<table class="tr"><thead><tr><th>轮次</th><th>NGA 新增</th><th>bilibili 新增</th><th>本次累计</th></tr></thead>'
+      + '<tbody>'+body+'</tbody></table>'
+      + '<div class="cap" style="margin-top:6px">悬停看该轮的去重/过期数。'
+      + '「本次累计」= 到该轮为止的归档总量。</div>'
+      + (blocked? '<div class="nudge" style="margin-top:8px">· 另有 '+blocked+' 次被预算护栏挡下'
+                 + '（爬轮上限已用尽），未落库。</div>':'')
+      + (nudges? '<div style="margin-top:10px;font-size:12px">'+nudges+'</div>':'')
+      + '<div class="kv"><span>输入 token <b>'+u.prompt_tokens+'</b>'
+      +   (u.cache_hit_tokens==null&&u.cache_miss_tokens==null
+            ? '（服务商未给缓存拆分）'
+            : '（缓存命中 '+u.cache_hit_tokens+' / 未命中 '+u.cache_miss_tokens+'）')+'</span>'
+      + '<span>输出 token <b>'+u.completion_tokens+'</b></span>'
+      + '<span>护栏 <b>'+ask.stats.ceiling+'</b>（该档位）</span></div>'
+      + '<div class="kv"><span>本题所有请求合计（含收口重写）</span>'
+      + '<span>模型 <b>'+esc(u.model||"未知")+'</b></span></div>'
+      + '<div class="kv"><span>落库 <b>'+ask.stats.total+'</b> 条 → <b>全部</b>进上下文 → 真引用 '
+      + '<b>'+ask.cites.length+'</b> 条；其余仍可检索回来</span></div>'
+      + '</div></details>';
+  }
+
+  /* ---------- 引用清单（翻页）----------
+     「归档了但答案没引用」动辄几百条（本题最多 573）—— 一次全排进页面就是几千个节点，滚起来
+     发涩，也没人真会一口气看完。两份清单都只排当前这一页：翻页时就地换那一段，不整卡重画
+     （整卡重画会把图也重画一遍，没必要）。
+     页状态挂模块级（REFAT）：点个折叠、切个口径不该把你翻回第一页。
+     行数据在 renderRefs 那一下抄进 REFROWS —— 序号与顺序都依赖 LOCAL，而 LOCAL 是**全局一份、
+     跟着最后一道题变**的；不抄走的话，第二张卡翻页会拿第一张卡的序号排。 */
+  var REF_PAGE=25;
+  var REFAT={};                         // "askId|清单名" -> 第几页
+  var REFROWS={};                       // "askId|清单名" -> [{c:引用, n:本题内序号|null}]
+  function refRows(ask,key){
+    if(!REFROWS[ask.id+"|"+key]){
+      var m=citeMap(ask);
+      REFROWS[ask.id+"|cited"]=LOCAL.order.map(function(id){ return m[id]?{c:m[id],n:LOCAL.id2n[id]}:null; })
+                                        .filter(Boolean);
+      REFROWS[ask.id+"|uncited"]=(ask.uncited||[]).map(function(c){ return {c:c,n:null}; });
+    }
+    return REFROWS[ask.id+"|"+key]||[];
+  }
+  function refRow(it){
+    var c=it.c;
+    return '<div class="ref"><span class="id"'+(it.n?' title="库内全局号 #'+c.id+'"':"")+'>'
+      + (it.n?it.n:"—")+'</span>'
+      + '<span class="pl '+esc(c.platform)+'">'+esc(c.platform)+'</span>'
+      + '<span class="tx"'+(it.n?' data-id="'+c.id+'" title="原文：'+esc(c.url||"")+'"':"")
+      + '><b>'+esc(labelOf(c))+'</b>'
+      + '<small>'+esc(c.author||"匿名")+' · '+esc((c.published_at||"").slice(0,10))+' · '+sentiName(c.senti)
+      + (c.sub?' · <span class="sub" title="这条视频的字幕全文已存进本机，点标题看">字幕</span>':"")+'</small></span>'
+      + '<span class="st">'+esc((c.published_at||"").slice(5,10))+'</span></div>';
+  }
+  function refBody(ask,key){
+    var rows=refRows(ask,key);
+    var pages=Math.max(1,Math.ceil(rows.length/REF_PAGE));
+    var p=Math.min(Math.max(0,REFAT[ask.id+"|"+key]||0),pages-1);
+    var h='<div class="refbox">'
+      + rows.slice(p*REF_PAGE,(p+1)*REF_PAGE).map(refRow).join("")+'</div>';
+    if(pages>1){
+      h+='<div class="refnav">'
+        + '<button data-refgo="-1"'+(p<=0?' disabled':'')+'>← 上一页</button>'
+        + '<span class="pg">第 <b>'+(p+1)+'</b> / '+pages+' 页</span>'
+        + '<button data-refgo="1"'+(p>=pages-1?' disabled':'')+'>下一页 →</button>'
+        + '<span class="hint">共 '+rows.length+' 条，每页 '+REF_PAGE+' 条</span>'
+        + '</div>';
+    }
+    return h;
+  }
+  /* 点引用行的标题 -> 看原文片段。翻页后新换上来那批行也得挂上, 否则第二页起点上去没反应。 */
+  function bindRefTx(root){
+    root.querySelectorAll(".ref .tx").forEach(function(el){
+      var id=+el.getAttribute("data-id");
+      if(!id) return;                       // 「归档了但答案没引用」那批没有本题序号, 没有可跳的原文
+      el.onclick=function(){
+        var ask=D.asks.filter(function(a){
+          return a.cites.some(function(c){ return c.id===id; });
+        })[0] || D.asks[0];
+        showCite(ask,[id]);
+      };
+    });
+  }
+  function renderRefs(ask){
+    var un=(ask.uncited||[]).length;
+    var unc=un ? ('<details style="margin-top:8px"><summary>归档了但没被引用的 '+un+' 条'
+        + '（也进过模型上下文，只是没被挑中）</summary>'
+        + '<div class="inner"><div class="refpg" data-refpg="uncited">'+refBody(ask,"uncited")+'</div>'
+        + '</div></details>') : "";
+    return '<details><summary>引用来源（引用 '+ask.cites.length+' / 归档 '+ask.stats.total
+      + ' · 点标题看原文）</summary>'
+      + '<div class="inner">'
+      + '<div class="cap" style="margin-bottom:6px">序号 = 本题内第几条（按答案里出现的先后）。</div>'
+      + '<div class="refpg" data-refpg="cited">'+refBody(ask,"cited")+'</div>'
+      + unc + '</div></details>';
+  }
+
+  /* ---------- token 消耗 ---------- */
+  /* 每一条回答都带一个消耗数(输入 / 输出)。数是从流水里读出来的**真数**, 由服务商逐次请求回过、
+     引擎累加(含收口那次重写); 不是我们估的 —— 本地估算那个数单列, 只用来和护栏比。
+     三档分开带出来(缓存命中/未命中/输出): 命中的那部分往往是输入的大头, 只报一个总数,
+     看不出"这份上下文里有多少是复用的"。 */
+  function tokText(n){
+    n=n||0;
+    return n>=10000 ? (n/10000).toFixed(1).replace(/\.0$/,"")+"万" : String(n);
+  }
+  function tokenBadge(ask){
+    var u=(ask.stats||{}).usage; if(!u) return "";
+    if(u.prompt_tokens==null&&u.completion_tokens==null)
+      return '<span class="badge toks">token 未记录</span>';   // 服务商没回 usage: 说没记到, 不印 0
+    var inT=u.prompt_tokens||0, outT=u.completion_tokens||0;
+    var split=(u.cache_hit_tokens==null&&u.cache_miss_tokens==null)
+      ? "（服务商未给缓存拆分）"
+      : "（缓存命中 "+(u.cache_hit_tokens||0)+" / 未命中 "+(u.cache_miss_tokens||0)+"）";
+    var t="本题所有请求合计（含收口重写）\n"
+      + "输入 "+inT+split+"\n输出 "+outT;
+    if(u.est_input_tokens)
+      t+="\n（本地估算输入 "+u.est_input_tokens+"，只用来对护栏，不是服务商口径）";
+    t+="\n模型："+(u.model||"未知")+"\n护栏："+(ask.stats.ceiling||"—");
+    return '<span class="badge toks" title="'+esc(t)+'">'
+      + 'token 输入 <b>'+tokText(inT)+'</b> · 输出 <b>'+tokText(outT)+'</b></span>';
+  }
+
+  /* ---------- 一条问答 ---------- */
+  /* 问了、却没答上来的那一题(后端跑到一半断了): 如实说, 不拿一张空卡冒充答案。
+     它没有结论、没有引用、没有统计 —— 那些字段后端一条都没有, 编不出来也不该编。 */
+  /* 用户自己按的「暂停」: 与"崩了"共用一张简卡, 但**多给一个「继续」** —— 两道题能做的事不一样,
+     画成一样就是骗人(崩的那道没有暂停记录, 不知道上次停在哪, "接着爬"只是重问一遍)。 */
+  function renderPaused(ask){
+    var got = (ask.got||0), rnd = (ask.rounds||0);
+    var did = rnd ? ('已爬 '+rnd+' 轮、新增 '+got+' 条样本')
+                  : '还没爬到新样本';
+    return ''
+    + '<div class="msg q" data-ask="'+esc(ask.id)+'"><div class="bub">'+esc(ask.question)+'</div>'
+    +   '<div class="meta">'+(ask.mode?'<span>'+esc(ask.mode)+'</span>':"")
+    +     '<span>'+esc(String(ask.ts||"").replace("T"," ").slice(0,16))+'</span></div></div>'
+    + '<div class="msg"><div class="card" data-ask="'+esc(ask.id)+'"><div class="hd">'
+    +   '<span class="badge" style="background:#fffbeb;border-color:#fcd34d;color:#92400e">已暂停</span>'
+    +   '<span>'+esc(did)+'，都留在本机</span>'
+    + '</div><div class="bd"><div class="ans">点「继续」从这儿接着爬，也可以丢弃这题。</div>'
+    +   '<div class="acts">'
+    +     '<button class="go" data-resume="'+esc(ask.qid||"")+'">继续</button>'
+    +     '<button class="act ghost" data-drop="'+esc(ask.qid||"")+'">丢弃这题</button>'
+    +   '</div></div>'
+    + '</div></div>';
+  }
+  function renderUnfinished(ask){
+    if(ask.paused) return renderPaused(ask);
+    return ''
+    + '<div class="msg q" data-ask="'+esc(ask.id)+'"><div class="bub">'+esc(ask.question)+'</div>'
+    +   '<div class="meta">'+(ask.mode?'<span>'+esc(ask.mode)+'</span>':"")
+    +     '<span>'+esc(String(ask.ts||"").replace("T"," ").slice(0,16))+'</span></div></div>'
+    + '<div class="msg"><div class="card" data-ask="'+esc(ask.id)+'"><div class="hd">'
+    +   '<span class="badge" style="background:#fef2f2;border-color:#fecaca;color:#b42318">没答上来</span>'
+    +   '<span>这题跑到一半后端断了，没有结论 —— 不是"社区没消息"</span>'
+    + '</div><div class="bd"><div class="ans">重问一遍就行，已经爬到的样本还在本机。</div></div>'
+    + '</div></div>';
+  }
+
+  function renderAsk(ask){
+    if(ask.unfinished) return renderUnfinished(ask);
+    localIndex(ask);
+    var byp=ask.stats.by_platform;
+    var cc=ask.cite_check||{cited:ask.cites.length,missing:[]};
+    var citeBadge = cc.missing.length
+      ? '<span class="badge" style="background:#fef2f2;border-color:#fecaca;color:#b42318">引用 '+cc.cited
+        + ' 条 · 有 '+cc.missing.length+' 条核不回存档 ✗</span>'
+      : '<span class="badge ok">引用 '+cc.cited+' 条 ✓ 全部核回存档</span>';
+    var modesBadge = ask.need_sentiment
+      ? '<span class="badge info">出情绪图</span>'
+      : '<span class="badge">不出情绪图</span>';
+    // 提前停止的那一题: 说清"这份答案只用了当时已取到的证据", 免得跟跑完全程的答卷混为一谈
+    var stopBadge = ask.cancelled
+      ? '<span class="badge" style="background:#fff6e5;border-color:#f5c98a;color:#8a5a00">已提前停止 · 只用了当时取到的证据</span>'
+      : '';
+    return ''
+    + '<div class="msg q" data-ask="'+esc(ask.id)+'"><div class="bub">'+esc(ask.question)+'</div>'
+    +   '<div class="meta"><span>'+esc(ask.mode)+'</span>'
+    +     (ask.ratio==null?"":'<span>平台比例 '+esc(ratioShort(ask.ratio))+'</span>')
+    +     '<span>'+esc(ask.ts.replace("T"," ").slice(0,16))+'</span></div></div>'
+    + '<div class="msg"><div class="card" data-ask="'+esc(ask.id)+'"><div class="hd">'
+    +   citeBadge
+    +   modesBadge
+    +   stopBadge
+    +   '<span class="spacer"></span>'
+    +   tokenBadge(ask)
+    +   '<span>归档 '+ask.stats.total+' 条 · NGA '+(byp.NGA||0)+' / B站 '+(byp.bilibili||0)+'</span>'
+    + '</div><div class="bd">'
+    +   '<div class="concl"><div class="t">结论</div><p>'+esc(ask.concl)+'</p></div>'
+    +   '<div class="ans">'+md(ask.answer)+'</div>'
+    +   '<div id="charts-'+ask.id+'"></div>'
+    +   renderRefs(ask)
+    +   renderTrace(ask)
+    +   '<div class="acts"><button data-correct>纠正</button>'
+    +     '<button data-copy>复制结论</button>'
+    +     '<button data-toggle-model>软信号：'+(state.smallModel?"开":"关")+'</button>'
+    +     '<button data-pdf'+(ask.pdf?' class="pdf"':"")+'>'+(ask.pdf?"下载 PDF":"导出 PDF")+'</button>'
+    +   '</div>'
+    + '</div></div></div>';
+  }
+
+  /* ---------- 引用浮层 ---------- */
+  function showCite(ask,ids){
+    var m=citeMap(ask), found=ids.map(function(i){return m[i];}).filter(Boolean);
+    if(!found.length){ toast("这条引用不在本题的存档范围里"); return; }
+    open("#mCite");
+    $("#citeBody").innerHTML=found.map(function(c){
+      return '<div style="margin-bottom:12px"><div style="font-size:12px;color:#667085;margin-bottom:4px">'
+        + localTag(c.id)+' · '+esc(c.platform)+' · '+esc(c.author||"匿名")+' · '+esc((c.published_at||"").slice(0,10))
+        + ' · <span style="color:#98a2b3">库内全局号 #'+c.id+'</span></div>'
+        + '<div style="font-size:14px;color:#1f2430;margin-bottom:6px">'+esc(labelOf(c))+'</div>'
+        + '<div style="font-size:13px;color:#344054;background:#f2f5f9;padding:10px;border-radius:8px;max-height:220px;overflow:auto;white-space:pre-wrap">'
+        + esc(c.text||"(无正文)")+'</div>'
+        + (c.sub ? '<details style="margin-top:6px"><summary>字幕全文（'+c.sub.length+' 字）</summary>'
+            + '<div style="font-size:13px;color:#344054;background:#f8fafc;padding:10px;border-radius:8px;max-height:320px;overflow:auto;white-space:pre-wrap">'
+            + esc(c.sub)+'</div></details>' : "")
+        + '</div>';
+    }).join("");
+  }
+
+  /* ---------- 组装 ---------- */
+  /* 空对话 = 这个对话还没有任何一题, 且此刻没有题在跑。首屏那个居中页就挂在这个类上。 */
+  function paintEmpty(){
+    document.body.classList.toggle("empty", !(D.asks&&D.asks.length) && !asking);
+  }
+  /* 题在跑时的占位卡: 一题要爬几分钟, 这段时间页面上得有东西在动 —— 否则首屏撤了、答案还没来,
+     整页空着, 看着像点坏了。 */
+  var pending=null;                       // {q, mode} —— 刚发出、还没回来的那一题
+  /* 刚停完就复问的那一题, 开头几分钟会"没动静" —— 后台要守 B 站的最小爬距(跨题 60/120 秒),
+     这段时间确实是干等, 不是卡死。这里先说一句, 免得用户以为点坏了又去停一次。
+     上一题的结束时刻只会晚于它最后一次真爬, 所以这里估的等待只会偏长, 不会偏短(宁可多说)。 */
+  /* 占位卡上那行"现在到底在干什么" —— 照后端给的真值说, 不猜。
+
+     公用之后"页面没动静"有好几种原因(正在爬 / 排队等 / 刚爬过要守间隔 / 冷却),
+     不说清是哪一种, 用户只会以为卡死又点一次 —— 那正是要避免的。
+     冷却/间距那两个数直接挂 data-cool/data-gap, 交给下面那个每秒的 ticker 走字,
+     所以这里给的是**起始值**, 之后自己会跳。 */
+  function pendingLive(){
+    if(!D.crawlers||!D.crawlers.length) return "";
+    var bits=[];
+    D.crawlers.forEach(function(c){
+      var st=crawlerState(c), nm='<b>'+esc(c.name)+'</b>';
+      if(st.cool)        bits.push(nm+' 冷却中，还要 <b class="num" data-cool="'+c.key+'">'+coolText(st.cool)+'</b>');
+      else if(st.queued) bits.push(nm+' 排队中'+(st.ahead>0?'（前面还有 '+st.ahead+' 个）':''));
+      else if(st.busy)   bits.push(nm+(st.mine?' 正在爬取':' 别人正在爬')+'…');
+      else if(st.gap)    bits.push(nm+' 刚爬过，还要 <b class="num" data-gap="'+c.key+'">'
+                                 + coolText(st.gap)+'</b>');
+    });
+    return bits.join('<br>');
+  }
+  /* ---------- 题在跑时的「实时画面」----------
+     引擎那边边跑边推事件(轮次 / 哪一次爬取开始结束 / 正文增量), 这里按事件累积, 每轮询一次重画。
+     **收口那一下整块被正式卡片替掉**(流式输出的通行做法): 所以草稿可以画得随意些,
+     它不必和最终答案长得一样 —— 正式那份带引用芯片/统计/轨迹, 由 renderAsk 出。 */
+  var live=null;                          // {round, draft, tools:[], usage:{}}
+  var TOOLNAME={crawl_nga:"爬 NGA", crawl_bili:"爬 bilibili", crawl_official:"官号探针",
+                search_archive:"检索存档", recall_answer:"回忆前文", nlp_score:"情感打分"};
+  function toolLabel(n){ return TOOLNAME[n]||n; }
+  function elapsedText(ms){
+    var s=Math.max(0,(Date.now()-ms)/1000);
+    return s<60 ? Math.floor(s)+"s" : Math.floor(s/60)+"分"+Math.floor(s%60)+"秒";
+  }
+  function liveReset(){ live={round:0, draft:"", tools:[], usage:{}}; }
+  function applyLive(ev){
+    if(!live||!ev||!ev.type) return;
+    if(ev.type==="round") live.round=ev.n||live.round;
+    else if(ev.type==="text-delta") live.draft+=ev.text||"";
+    else if(ev.type==="delta-reset") live.draft="";     // 上面那段是草稿(前言/重写前)→ 丢掉
+    else if(ev.type==="usage") live.usage={prompt_tokens:ev.prompt_tokens||0,
+                                           completion_tokens:ev.completion_tokens||0,
+                                           total:ev.total||null};   // 累计消耗(边爬边涨)
+    else if(ev.type==="tool-start")
+      live.tools.push({name:ev.name, platform:ev.platform, query:ev.query||"",
+                       state:"run", t0:Date.now()});
+    else if(ev.type==="tool-end"){
+      for(var i=live.tools.length-1;i>=0;i--){          // 从后往前配: 同一个工具可能被调好几次
+        var t=live.tools[i];
+        if(t.state==="run"&&t.name===ev.name&&t.platform===ev.platform){
+          t.state=ev.blocked?"blocked":"ok";
+          t.new=ev.new||0; t.dup=ev.dup||0; t.blocked=ev.blocked||"";
+          break;
+        }
+      }
+    }
+  }
+  function liveHtml(){
+    if(!live) return "";
+    var bits=[];
+    if(live.round) bits.push('<div class="lstep">第 <b>'+live.round+'</b> 轮</div>');
+    live.tools.forEach(function(t){
+      if(t.state==="run")
+        bits.push('<div class="lstep run">'+toolLabel(t.name)+' 正在爬'
+          +(t.query?' <span class="tq">'+esc(t.query)+'</span>':'')
+          +' <b class="num" data-since="'+t.t0+'">'+elapsedText(t.t0)+'</b></div>');
+      else if(t.state==="ok")
+        bits.push('<div class="lstep ok">'+toolLabel(t.name)+' 回来了：新增 <b>'+t.new+'</b> 条'
+          +(t.dup?'（去重 '+t.dup+'）':'')+'</div>');
+      else
+        bits.push('<div class="lstep bad">'+toolLabel(t.name)+' 没爬成：'+esc(t.blocked||"")+'</div>');
+    });
+    var tot=live.usage.total||{};
+    var tp=(tot.prompt_tokens!=null? tot.prompt_tokens : live.usage.prompt_tokens);
+    var tc=(tot.completion_tokens!=null? tot.completion_tokens : live.usage.completion_tokens);
+    if(tp||tc)                                  // 累计: 还没收口就知道这题已经吃掉多少
+      bits.push('<div class="lstep">token 累计：输入 <b>'+tokText(tp)+'</b> · 输出 <b>'
+        +tokText(tc)+'</b></div>');
+    return bits.join("");
+  }
+  function liveDraft(){
+    if(!live||!live.draft) return "";
+    /* 草稿里的 [id=N] 先抹掉: 那是库内全局号, 要等本题收口后由 localIndex 映射成
+       「本题第几条」才看得懂 —— 现在画出来就是正文里一路飘 [id=4713]。 */
+    var t=live.draft.replace(/\[\s*id\s*=\s*[^\]]*\]/g,"");
+    return '<div class="draft">'+esc(t).replace(/\r?\n/g,"<br>")+'<i class="cur"></i></div>';
+  }
+  /* 只重画这一小块, 不走 renderAll —— 后者会重画整个列表、清掉图表实例, 每 0.7 秒来一次太重。 */
+  function refreshPending(){
+    var a=$("#pendSteps"); if(a) a.innerHTML=liveHtml();
+    var b=$("#pendLive");  if(b) b.innerHTML=pendingLive();
+    var c=$("#pendDraft"); if(c) c.innerHTML=liveDraft();
+  }
+  function renderPending(){
+    if(!asking||!pending) return "";
+    return '<div class="msg q" data-ask="__pending"><div class="bub">'+esc(pending.q)+'</div>'
+      +   '<div class="meta"><span>'+esc(pending.mode)+'</span><span>刚发出</span></div></div>'
+      + '<div class="msg"><div class="card pending"><div class="bd">'
+      +   '<div class="typing"><i></i><i></i><i></i></div>'
+      +   '<div class="ptxt">正在取样本，通常几分钟。不想等就点 <b>■</b>（已取到的样本会留下）。</div>'
+      +   '<div class="psteps" id="pendSteps">'+liveHtml()+'</div>'
+      +   '<div class="psteps" id="pendLive">'+pendingLive()+'</div>'
+      +   '<div id="pendDraft">'+liveDraft()+'</div>'
+      +   '<div class="psteps">爬取 → 落库 → 合成 → 核引用</div>'
+      + '</div></div></div>';
+  }
+
+  /* 入场动画只给**这一轮新出现**的那条: renderAll 每次都重画整个列表, 给所有 .msg 挂动画
+     等于每次刷新整屏重放。键带上 SID —— 题号在两边会话里都可能叫同一个, 只用题号会撞。 */
+  var PAINTED={};
+  function markFresh(){
+    var shown=0;
+    D.asks.forEach(function(a){
+      var k=SID+"|"+a.id;
+      if(PAINTED[k]) return;
+      PAINTED[k]=1;
+      var d=Math.min(shown++,4)*55;       // 错峰入场, 但封顶 —— 免得切回一个长对话时依次蹦太久
+      $("#wrap").querySelectorAll('[data-ask="'+a.id+'"]').forEach(function(el){
+        el.classList.add("enter"); el.style.animationDelay=d+"ms";
+      });
+    });
+    if(shown>200) PAINTED={};             // 账本别无限涨(真涨到这份上, 重来一遍也不亏)
+  }
+
+  function renderAll(){
+    paintEmpty();
+    dropCharts();                           // 旧画布马上要被 innerHTML 冲掉, 实例得先清干净
+    var h='';
+    D.asks.forEach(function(a){ h+=renderAsk(a); });
+    $("#wrap").innerHTML=h+renderPending();
+    // 没答上来的那题没有统计/引用可画, 也没有图的位置(见 renderUnfinished)
+    D.asks.forEach(function(a){ if(!a.unfinished) renderCharts(a); });
+    markFresh();
+
+    $("#wrap").querySelectorAll(".cite").forEach(function(el){
+      el.onclick=function(){
+        var card=el.closest("[data-ask]");        // 引用要拿**它所在那题**的存档去核, 不能一律用第一题
+        var ask=(card && D.asks.filter(function(a){ return a.id===card.getAttribute("data-ask"); })[0]) || D.asks[0];
+        showCite(ask, parseIds(el.getAttribute("data-ids")||""));
+      };
+    });
+    bindRefTx($("#wrap"));
+    /* 引用清单翻页: 就地换那一页, 不整卡重画。换上来那批行要重新挂点击(见 bindRefTx)。 */
+    $("#wrap").querySelectorAll("[data-refgo]").forEach(function(b){
+      b.onclick=function(){
+        var nav=b.parentNode, host=nav && nav.parentNode;      // .refnav -> .refpg
+        var card=b.closest("[data-ask]");
+        var ask=card && D.asks.filter(function(a){ return a.id===card.getAttribute("data-ask"); })[0];
+        if(!host || !ask) return;
+        var key=host.getAttribute("data-refpg");
+        var pages=Math.max(1,Math.ceil(refRows(ask,key).length/REF_PAGE));
+        REFAT[ask.id+"|"+key]=Math.min(Math.max(0,(REFAT[ask.id+"|"+key]||0)
+                                                    + (+b.getAttribute("data-refgo"))),pages-1);
+        host.innerHTML=refBody(ask,key);
+        bindRefTx(host);
+      };
+    });
+    $("#wrap").querySelectorAll("[data-correct]").forEach(function(b){
+      b.onclick=function(){
+        var card=b.closest("[data-ask]");
+        var ask=(card && D.asks.filter(function(a){ return a.id===card.getAttribute("data-ask"); })[0]) || null;
+        if(!ask) return toast("找不到这题");
+        if(!ask.cid) return toast("这题已翻篇（历史题）—— 纠正只在刚答完那轮有效");
+        var cur=ask.concl||"";
+        var v=window.prompt("纠正这条结论（会留痕、原结论作废，不覆盖）：\n\n当前："+cur, cur);
+        if(v===null) return;                                  // 点了取消
+        api("/api/correct",{method:"POST",body:JSON.stringify({session:SID,cid:ask.cid,concl:v})})
+          .then(function(r){
+            if(r && r.ok){ toast(r.msg||"已纠正"); refreshHistory(); }
+            else { toast("没纠正成："+((r&&(r.error||r.msg))||"未知原因")); }
+          }).catch(function(){ toast("纠正请求没发出去（后端 :8780 在跑吗？）"); });
+      };
+    });
+    $("#wrap").querySelectorAll("[data-copy]").forEach(function(b){
+      b.onclick=function(){
+        var card=b.closest("[data-ask]");
+        var ask=(card && D.asks.filter(function(a){ return a.id===card.getAttribute("data-ask"); })[0]) || null;
+        var txt=(ask && (ask.concl||ask.answer)) || "";
+        if(!txt) return toast("这题没有可复制的内容");
+        var done=function(){ toast("已复制"); };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(txt).then(done,function(){ legacyCopy(txt); done(); });
+        } else { legacyCopy(txt); done(); }
+      };
+    });
+    $("#wrap").querySelectorAll("[data-toggle-model]").forEach(function(b){
+      b.onclick=function(){
+        state.smallModel=!state.smallModel;
+        toast(state.smallModel?"情绪图改用全量样本":"情绪图改用被引证据");
+        renderAll();
+      };
+    });
+    /* 「继续」: 接着某道暂停的题往下爬。与发新题走同一条轮询 —— 后端开的是同一种任务,
+       差别只在这题的问句/档位是从那条暂停记录里读回来的(见 webapp._resume)。 */
+    $("#wrap").querySelectorAll("[data-resume]").forEach(function(b){
+      b.onclick=function(){
+        if(asking) return toast("上一题还在跑, 先等它或点「提前停止」");
+        var qid=b.getAttribute("data-resume");
+        b.disabled=true; b.textContent="接着爬…";
+        setAsking(true); liveReset(); scrollBottom();
+        api("/api/resume",{method:"POST",body:JSON.stringify({session:SID,qid:qid})})
+          .then(function(r){
+            if(r.__status===429){ toast("这个对话有一题还在跑，接回那一题"); return attachRunning(); }
+            if(r.__status!==202) throw new Error((r&&r.error)||("HTTP "+r.__status));
+            toast("从上次停的地方接着爬");
+            return pollJob(r.job);
+          })
+          .catch(function(e){ toast("没接着："+e.message); })
+          .then(function(){ setAsking(false); pending=null; live=null;
+                            renderAll(); sidRemember(); refreshSessions(); refreshStatus(); });
+      };
+    });
+    /* 「丢弃这题」: 只是不要这一题了 —— 已经爬到的样本留在库里(别的题还用得上), 撤的是这张卡。 */
+    $("#wrap").querySelectorAll("[data-drop]").forEach(function(b){
+      b.onclick=function(){
+        var qid=b.getAttribute("data-drop");
+        if(!qid) return;
+        b.disabled=true; b.textContent="丢弃…";
+        api("/api/discard",{method:"POST",body:JSON.stringify({session:SID,qid:qid})})
+          .then(function(r){
+            if(r.__status!==200 || !r.ok) throw new Error((r&&r.error)||("HTTP "+r.__status));
+            toast("这题不要了");
+            return refreshHistory();
+          })
+          .catch(function(e){ b.disabled=false; b.textContent="丢弃这题"; toast("没丢成："+e.message); });
+      };
+    });
+    $("#wrap").querySelectorAll("[data-pdf]").forEach(function(b){
+      b.onclick=function(){
+        var card=b.closest("[data-ask]");
+        var ask=(card && D.asks.filter(function(a){ return a.id===card.getAttribute("data-ask"); })[0]) || null;
+        if(!ask) return toast("找不到这题");
+        if(ask.pdf){ pdfGrab(ask.pdf); return; }        // 导过的直接拿, 不再等一次渲染
+        b.disabled=true; b.textContent="正在导出…";
+        api("/api/pdf",{method:"POST",body:JSON.stringify({session:SID,id:ask.id})})
+          .then(function(r){
+            if(r.__status!==200 || !r.ok) throw new Error((r&&r.error)||("HTTP "+r.__status));
+            ask.pdf=r.url; b.disabled=false; b.className="pdf"; b.textContent="下载 PDF";
+            pdfGrab(r.url);
+          })
+          .catch(function(e){
+            b.disabled=false; b.textContent="导出为 PDF";
+            toast("没导成："+e.message);     // 答案本身没问题, 只是这份纸没生成出来
+          });
+      };
+    });
+  }
+  /* 浏览器里把地址当下载点一下 —— PDF 是服务端现渲染的, 点了才有 */
+  function pdfGrab(url){
+    var a=document.createElement("a");
+    a.href=url; a.download=""; a.style.display="none";
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); }, 0);
+  }
+
+  /* ---------- 浮层开关 ---------- */
+  function open(sel){ $(sel).classList.add("show"); }
+  function close(el){
+    el.classList.remove("show");
+    if(el.id==="mBili") qrStop();
+    if(el.id==="mNga") ngaQrStop();
+    if(el.id==="mDel"){ DEL_SID=null; DEL_TITLE=""; }   // 关掉就忘掉待删的是谁, 免得下次误删上一个
+  }
+  document.querySelectorAll("[data-close]").forEach(function(b){
+    b.onclick=function(){ close(b.closest(".modal")); };
+  });
+  document.querySelectorAll(".modal").forEach(function(m){
+    m.onclick=function(e){ if(e.target===m) close(m); };
+  });
+
+  /* ---------- 交互 ---------- */
+  $("#sessToggle").onclick=function(){ toggleAside(); };
+  $("#expandBtn").onclick=function(){ toggleAside(); };
+  function toggleAside(){ document.body.classList.toggle("collapsed"); }
+
+  /* 档位 chip */
+  $("#modeSeg").querySelectorAll("button").forEach(function(b){
+    b.onclick=function(){
+      $("#modeSeg").querySelectorAll("button").forEach(function(x){x.classList.remove("on");});
+      b.classList.add("on"); state.mode=b.getAttribute("data-mode");
+      toast("档位切到「"+state.mode+"」");
+    };
+  });
+
+  /* 平台比例：按钮原地展开成胶囊，滑杆即时生效，不弹窗。
+     刻度不用百分号，两边的份数直接摆出来。两端(只取一侧)是**硬禁用**另一边；
+     中间(1..99)只是按配比软引导，不是硬门 —— 说明文字只写引擎真会做的那些事。 */
+  function ratioShort(r){
+    if(r===100) return "只取 NGA";
+    if(r===0) return "只取 bilibili";
+    if(r===50) return "两平台均等";
+    return "NGA "+r+" : bilibili "+(100-r);
+  }
+  function ratioBias(r){
+    if(r>=100) return "只爬 NGA，bilibili 不取样本。";
+    if(r<=0)   return "只爬 bilibili，NGA 不取样本。";
+    if(r===50) return "两侧样本量大致各半。";
+    return "按 NGA "+r+" : bilibili "+(100-r)+" 引导样本量（允许 ±5 个百分点）；"
+         + "某一侧冷却中、或确实没料时，不硬凑比例。";
+  }
+  function paintRatio(){
+    $("#ratioRange").value=state.ratio;
+    $("#ratioVal").textContent=ratioShort(state.ratio);
+    var t="平台比例 "+ratioShort(state.ratio)+" · "+ratioBias(state.ratio);
+    $("#ratioMorph").title=t; $("#ratioBtn").title=t;
+  }
+  function morphOpen(on){
+    $("#ratioMorph").classList.toggle("open", on);
+    $("#ratioBtn").setAttribute("aria-expanded", on?"true":"false");
+  }
+  $("#ratioBtn").onclick=function(){
+    morphOpen(!$("#ratioMorph").classList.contains("open"));
+  };
+  $("#ratioRange").oninput=function(){ state.ratio=+this.value; paintRatio(); };
+  $("#ratioRange").onchange=function(){ toast("平台比例 → "+ratioShort(state.ratio)); };
+  document.addEventListener("click",function(e){
+    if(!$("#ratioMorph").contains(e.target)) morphOpen(false);
+  });
+
+  /* 爬虫状态（侧栏底那一行）→ 详情窗 */
+  $("#stNga").onclick=function(){ open("#mStatus"); };
+  $("#stBili").onclick=function(){ open("#mStatus"); };
+
+  /* 设置：清单由后端给（含「值从哪来」「改完要不要重启」），改了能存回 */
+  function setMsg(t,cls){
+    var m=$("#setMsg"); m.textContent=t||"";
+    m.style.color = cls==="bad"?"#b42318" : cls==="ok"?"#15803d" : "#667085";
+  }
+  function setCtl(it){
+    var v=(it.value==null?"":String(it.value));
+    if(it.sensitive && !it.writable)
+      return '<span class="roff">'+(it.configured?"已配置":"未配置")+'</span>';
+    if(it.sensitive){        // 密钥：能填，但永不回显 —— 空着 = 别动它
+      return '<input type="password" data-k="'+esc(it.key)+'" data-secret="1" autocomplete="new-password"'
+           + ' placeholder="'+(it.configured?"已配置，要换就填新的":"还没配，填在这里")+'" value="">'
+           + '<button type="button" class="secclr" data-clr="'+esc(it.key)+'">清除</button>'
+           + '<span class="roff">当前：'+(it.configured?"已配置":"未配置")+'</span>';
+    }
+    var k=' data-k="'+esc(it.key)+'"';
+    if(it.kind==="bool"){
+      var on=(v!=="0"&&v!=="");
+      return '<label class="chk"><input type="checkbox"'+k+' data-kind="bool"'+(on?" checked":"")+'>'
+           + '<span>'+(on?"开":"关")+'</span></label>';
+    }
+    var t=(it.kind==="int"||it.kind==="float")?"number":"text";
+    var extra=(it.kind==="float"?' step="0.05"':"")
+            + (it.lo==null?"":' min="'+it.lo+'"') + (it.hi==null?"":' max="'+it.hi+'"')
+            + (it.key==="LLM_BASE_URL"?' list="llmUrls"':"");
+    return '<input type="'+t+'"'+k+' data-kind="'+esc(it.kind)+'"'+extra+' value="'+esc(v)+'">';
+  }
+  /* ---------- 外部工具（MCP）
+     自带那几件工具的开关在上面「工具」那一栏；这一栏管另外两件事：
+       ① 我们自己也是一个 MCP 服务 —— 别人（别的软件）怎么连上我们；
+       ② 用户自己加的外部工具服务 —— 我们当客户端去连他们。
+     页面刷一次**不去连**外部服务（一个填错的地址能把设置页卡上一分钟）；真要连是点「测试」。 */
+  function cmdText(c){ return Array.isArray(c)?c.join(" "):(c||""); }
+  function mcpInputs(isHttp,r){
+    r=r||{};
+    if(isHttp)
+      return '<input type="text" data-f="url" placeholder="http://127.0.0.1:8121/mcp" value="'+esc(r.url||"")+'">';
+    return '<input type="text" data-f="command" placeholder="npx -y 某个工具包（有空格就整条填进来）" value="'+esc(cmdText(r.command))+'">'
+         + '<input type="text" data-f="cwd" placeholder="在哪跑（可空）" value="'+esc(r.cwd||"")+'">';
+  }
+  function mcpStat(s){
+    var t=(s||{}).tools;
+    if(t===null||t===undefined) return '<span class="mcpstat">还没测过，点「测试」连一次</span>';
+    if(!t.length) return '<span class="mcpstat ok">连上了，但没有工具</span>';
+    return '<span class="mcpstat ok">连上了，提供 '+t.length+' 件工具：'
+         + esc(t.map(function(x){return x.name;}).join("、"))+'</span>';
+  }
+  function mcpRow(s){
+    s=s||{};
+    var isHttp=(s.transport==="http"), on=(s.enabled!==false);
+    return '<div class="mcprow">'
+      + '<div class="mcpline">'
+      +   '<input type="text" data-f="name" placeholder="给它起个名字" value="'+esc(s.name||"")+'">'
+      +   '<select data-f="transport">'
+      +     '<option value="stdio"'+(isHttp?"":" selected")+'>本地命令</option>'
+      +     '<option value="http"'+(isHttp?" selected":"")+'>网址</option>'
+      +   '</select>'
+      +   '<label class="chk"><input type="checkbox" data-f="enabled"'+(on?" checked":"")+'>'
+      +   '<span>'+(on?"开":"关")+'</span></label>'
+      +   '<button type="button" class="mcpbtn" data-act="test">测试</button>'
+      +   '<button type="button" class="mcpbtn danger" data-act="del">删除</button>'
+      + '</div>'
+      + '<div class="mcpline mcpinputs">'+mcpInputs(isHttp,s)+'</div>'
+      + '<div class="mcpline">'+mcpStat(s)+'</div>'
+      + '</div>';
+  }
+  function oneMcp(r){
+    function val(f){ var e=r.querySelector('[data-f="'+f+'"]'); return e?e.value:""; }
+    function chk(f){ var e=r.querySelector('[data-f="'+f+'"]'); return e?!!e.checked:true; }
+    var tr=r.querySelector('[data-f="transport"]');
+    return {name:(val("name")||"").trim(), transport:(tr?tr.value:"stdio"),
+            enabled:chk("enabled")?"1":"0", url:val("url"), command:val("command"), cwd:val("cwd")};
+  }
+  function collectMcp(){
+    var out=[];
+    $("#settingsBody").querySelectorAll(".mcprow").forEach(function(r){ out.push(oneMcp(r)); });
+    return out;
+  }
+  function bindMcpRow(r){
+    var tr=r.querySelector('[data-f="transport"]');
+    if(tr) tr.onchange=function(){ r.querySelector(".mcpinputs").innerHTML=mcpInputs(tr.value==="http",{}); };
+    var eb=r.querySelector('[data-f="enabled"]');
+    if(eb) eb.onchange=function(){ var sp=eb.parentNode.querySelector("span");
+                                   if(sp) sp.textContent=eb.checked?"开":"关"; };
+    r.querySelectorAll(".mcpbtn").forEach(function(b){
+      b.onclick=function(){
+        if(b.getAttribute("data-act")==="del"){ r.parentNode.removeChild(r); return; }
+        var one=oneMcp(r);
+        if(!one.name) return toast("先给它起个名字");
+        var box=r.querySelector(".mcpline:last-child");
+        box.innerHTML='<span class="mcpstat">正在连…</span>';
+        api("/api/mcp",{method:"POST",body:JSON.stringify({action:"test",server:one})}).then(function(x){
+          box.innerHTML = (x&&x.ok) ? mcpStat({tools:x.tools||[]})
+                                    : '<span class="mcpstat bad">连不上：'+esc((x&&x.error)||"未知")+'</span>';
+          toast((x&&x.ok)?"连上了":"没连上，看那一行写的");
+        }).catch(function(){ box.innerHTML='<span class="mcpstat bad">测试请求没发出去</span>'; });
+      };
+    });
+  }
+  /* 一条设置项。卡里的那一行开关(label 与卡头重名)不再重复写名字。 */
+  function setItem(it,noTitle){
+    var h='<div class="setitem"><div class="settit">';
+    if(!noTitle) h+=esc(it.label);
+    h+='<span class="src">'+esc(it.source)+'</span>'
+     + (it.restart?'<span class="restart">改完要重启</span>':"")+'</div>';
+    if(!noTitle && it.help) h+='<span class="sethint">'+esc(it.help)+'</span>';
+    if(it.note) h+='<span class="warnnote">'+esc(it.note)+'</span>';
+    return h+'<div class="setctl">'+setCtl(it)+'</div></div>';
+  }
+  /* 「外部工具」卡: 我们自己对外是一个 MCP 服务 + 用户加进来的外部服务。
+     loaded=false 表示这栏没读到（/api/tools 挂了）—— 那样**绝不能**让它参与保存:
+     空清单存回去 = 把用户已经配好的外部服务清光。见 setSave 里那道 data-loaded 闸。 */
+  function extCard(t){
+    var loaded=!!t;
+    t=t||{}; var sv=t.servers||[], m=t.mcp||{};
+    var cmd=((m.command||"python")+" "+((m.args||[]).join(" "))).trim();
+    var h='<div class="tcard" data-card="外部工具"><div class="thead">'
+      + '<span class="tn">外部工具</span>'
+      + '<span class="tstate">'+(loaded?(sv.length?sv.length+" 个":"没有"):"—")+'</span>'
+      + '<span class="tchev">›</span></div><div class="tbody">';
+    h+='<div class="setitem"><div class="settit">对外提供</div>'
+      +  '<code class="mcpcmd">'+esc(cmd)+'\n工作目录：'+esc(m.cwd||"（后端目录）")+'</code></div>';
+    h+='<div class="setitem"><div class="settit">加进来的服务</div>'
+      +  '<div class="mcplist"'+(loaded?' data-loaded="1"':'')+'>'+sv.map(mcpRow).join("")+'</div>'
+      +  '<div class="setctl"><button type="button" class="mcpbtn" id="mcpAdd">＋ 加一个</button></div></div>';
+    return h+'</div></div>';
+  }
+  /* 工具那一栏: 每件工具一张卡(后端按 card 字段给), 点开那张卡就地配它自己的参数。 */
+  function cardGrid(g,tp){
+    var box={},order=[];
+    (g.items||[]).forEach(function(it){
+      var c=it.card||"其他";
+      if(!box[c]){ box[c]=[]; order.push(c); }
+      box[c].push(it);
+    });
+    var h='<div class="setsec setwide"><div class="cardgrid">';
+    order.forEach(function(name){
+      var list=box[name], it0=list[0]||{};
+      var on=(it0.kind==="bool") ? (it0.value!=="0"&&it0.value!=="") : null;
+      h+='<div class="tcard" data-card="'+esc(name)+'"><div class="thead">'
+        +  '<span class="tn">'+esc(name)+'</span>'
+        +  (on===null?"":'<span class="tstate'+(on?" on":"")+'">'+(on?"开":"关")+'</span>')
+        +  '<span class="tchev">›</span></div><div class="tbody">';
+      list.forEach(function(it){ h+=setItem(it, it.label===name); });
+      h+='</div></div>';
+    });
+    return h+extCard(tp)+'</div></div>';
+  }
+  /* 大模型那一栏多一行只读的「当前模型」: 模型名不用用户填, 是问服务端要的(可当场再问一次)。 */
+  function modelRow(m){
+    m=m||{};
+    return '<div class="setitem" id="mdlRow"><div class="settit">当前模型'
+      + '<span class="src">'+(m.auto===false?"config.bat 指定":"自动探测")+'</span></div>'
+      + '<div class="setctl"><span class="mdl">'+esc(m.model||"还没探测过")+'</span>'
+      + '<button type="button" class="mcpbtn" id="mdlProbe">重新探测</button></div>'
+      + (m.error?'<span class="warnnote">'+esc(m.error)+'</span>':"")
+      + '</div>';
+  }
+  function bindModelRow(){
+    var b=$("#mdlProbe");
+    if(!b) return;
+    b.onclick=function(){
+      b.disabled=true; b.textContent="正在问…";
+      api("/api/model",{method:"POST",body:"{}"}).then(function(r){
+        var row=$("#mdlRow");
+        if(!row) return;
+        row.outerHTML=modelRow({model:(r&&r.model)||"",auto:true,error:(r&&r.error)||null});
+        bindModelRow();
+      }).catch(function(){
+        b.disabled=false; b.textContent="重新探测";
+        toast("后端连不上（:8780 起了没？）");
+      });
+    };
+  }
+  /* 卡头点一下就地摊开; 卡里那个开关一动, 卡头上的「开/关」跟着变(收起来也看得见)。 */
+  function bindCards(){
+    $("#settingsBody").querySelectorAll(".tcard").forEach(function(c){
+      var hd=c.querySelector(".thead");
+      hd.onclick=function(){ c.classList.toggle("open"); };
+      var cb=c.querySelector('.tbody input[data-kind="bool"]');
+      var st=c.querySelector(".thead .tstate");
+      if(cb && st) cb.onchange=function(){
+        st.textContent=cb.checked?"开":"关"; st.classList.toggle("on",cb.checked);
+      };
+    });
+  }
+  /* 垃圾桶（设置面板最后一栏）: 删掉的对话在这儿躺满 7 天, 到期由后端扫掉。
+     还剩几天是**后端按时刻算的**(days_left), 前端不再自己算一遍 —— 两处各算一次, 迟早对不上。 */
+  function fmtAt(ts){
+    var d=new Date(ts*1000);
+    function p(n){ return (n<10?"0":"")+n; }
+    return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
+  }
+  function trashSection(t){
+    var loaded=!!t, items=(t&&t.items)||[], days=(t&&t.days)||7;
+    var h='<div class="setsec"><div class="setrail">垃圾桶</div><div class="setbody">';
+    h+='<div class="setitem"><div class="settit">删掉的对话<span class="src">留 '+days+' 天</span></div>'
+      +  '<span class="sethint">留 '+days+' 天，点「恢复」搬回去；到期自动清掉。</span></div>';
+    if(!loaded){
+      h+='<div class="setitem"><span class="sethint">（没读到垃圾桶 —— 后端 :8780 在跑吗？）</span></div>';
+    }else if(!items.length){
+      h+='<div class="setitem"><span class="sethint">垃圾桶是空的。</span></div>';
+    }else{
+      items.forEach(function(it){
+        var soon=it.days_left<=1;                     // 最后一天标红: 再不管就真没了
+        h+='<div class="setitem trashrow">'
+          +  '<div class="tt" title="'+esc(it.title||it.scope)+'">'+esc(it.title||"（没标题的对话）")
+          +  '<span class="left'+(soon?" soon":"")+'">还剩 '+it.days_left+' 天</span></div>'
+          +  '<span class="sethint">删于 '+fmtAt(it.deleted_at)+'</span>'
+          +  '<div class="setctl"><button type="button" class="trashback"'
+          +  ' data-restore="'+esc(it.scope)+'">恢复</button></div></div>';
+      });
+    }
+    return h+'</div></div>';
+  }
+  function trashRestore(btn){
+    var sc=btn.getAttribute("data-restore"); if(!sc) return;
+    var sid=(sc.indexOf("web:")===0) ? sc.slice(4) : sc;   // 后端存的是 web:<会话号>, 侧栏认的是会话号
+    btn.disabled=true; btn.textContent="正在恢复…";
+    api("/api/restore",{method:"POST",body:JSON.stringify({session:sid})}).then(function(j){
+      if(j.__status!==200 || !j.ok){
+        btn.disabled=false; btn.textContent="恢复";
+        return toast("没恢复成："+((j&&j.error)||"后端没回话"));
+      }
+      var r=j.restored||{};
+      if(!sidFind(sid)){                       // 侧栏里那一行也加回来(它早被删掉了), 不动正在看的对话
+        SIDS.unshift({id:sid, title:r.title||"", at:new Date().toISOString()});
+        registryPut(); renderSessions();
+      }
+      toast("已恢复：结论 "+(r.session_claim||0)+" 条 · 检查点 "+(r.checkpoint||0)
+            +" 份 · 流水 "+(r.flow_file?"1 份":"0 份"));
+      loadSettings();                          // 重画这一栏: 恢复掉的那条不该再显示
+    }).catch(function(){
+      btn.disabled=false; btn.textContent="恢复";
+      toast("后端连不上（:8780 起了没？）");
+    });
+  }
+  function loadSettings(){
+    $("#settingsBody").innerHTML='<div style="font-size:12.5px;color:#667085">正在读取…</div>';
+    return Promise.all([api("/api/settings"),
+                        api("/api/tools").catch(function(){ return null; }),
+                        api("/api/trash").catch(function(){ return null; })])
+      .then(function(rr){
+      var s=rr[0]||{}, tp=rr[1], tr=rr[2];
+      var gs=s.groups||[], h='<div class="settabs">';
+      gs.forEach(function(g,i){                       // 顶上那排：有哪些类
+        h+='<button type="button" data-sec="'+i+'">'+esc(g.name)+'</button>';
+      });
+      h+='<button type="button" data-sec="'+gs.length+'">垃圾桶</button>';
+      h+='</div><div class="setscroll">';
+      gs.forEach(function(g,i){
+        if(g.layout==="cards"){                       // 工具那一类 = 一件工具一张卡(点开就地配)
+          h+=cardGrid(g,tp);
+          return;
+        }
+        h+='<div class="setsec"><div class="setrail">'+esc(g.name)+'</div>'
+          +'<div class="setbody">';
+        (g.items||[]).forEach(function(it){ h+=setItem(it,false); });
+        if(g.name==="大模型") h+=modelRow(s.model);
+        h+='</div></div>';
+      });
+      h+=trashSection(tr);                            // 最后一类：垃圾桶（删掉的对话在这儿躺 7 天）
+      h+='</div>';
+      $("#settingsBody").innerHTML=h;
+      // 顶上那排：点哪一类就滚到哪一类；反过来滚到哪一类就把哪个点亮
+      var sc=$("#settingsBody").querySelector(".setscroll");
+      var tabs=$("#settingsBody").querySelectorAll(".settabs button");
+      var secs=sc.querySelectorAll(".setsec");
+      function lit(i){ tabs.forEach(function(b,j){ b.classList.toggle("on", i===j); }); }
+      tabs.forEach(function(b){
+        b.onclick=function(){
+          var i=+b.getAttribute("data-sec");
+          if(secs[i]) sc.scrollTop += secs[i].getBoundingClientRect().top - sc.getBoundingClientRect().top;
+          lit(i);
+        };
+      });
+      sc.onscroll=function(){
+        var top=sc.getBoundingClientRect().top+4, best=0;
+        for(var i=0;i<secs.length;i++){ if(secs[i].getBoundingClientRect().top<=top) best=i; }
+        lit(best);
+      };
+      lit(0);
+      $("#settingsBody").querySelectorAll(".chk input").forEach(function(cb){
+        cb.onchange=function(){ cb.parentNode.querySelector("span").textContent=cb.checked?"开":"关"; };
+      });
+      $("#settingsBody").querySelectorAll(".secclr").forEach(function(b){
+        b.onclick=function(){
+          var inp=b.parentNode.querySelector('[data-secret]');
+          inp.value=""; inp.setAttribute("data-clr","1");
+          inp.placeholder="保存后清空";
+          toast("点「保存」才会真清掉");
+        };
+      });
+      bindCards();
+      bindModelRow();
+      $("#settingsBody").querySelectorAll(".mcprow").forEach(bindMcpRow);
+      $("#settingsBody").querySelectorAll(".trashback").forEach(function(b){
+        b.onclick=function(){ trashRestore(b); };
+      });
+      var add=$("#mcpAdd");
+      if(add) add.onclick=function(){
+        var list=$("#settingsBody").querySelector(".mcplist");
+        if(!list) return;
+        var box=document.createElement("div");
+        box.innerHTML=mcpRow({name:"", transport:"stdio", enabled:true, tools:null});
+        var row=box.firstChild;
+        list.appendChild(row); bindMcpRow(row);
+        var nm=row.querySelector('[data-f="name"]');
+        if(nm) nm.focus();
+      };
+    }).catch(function(){
+      $("#settingsBody").innerHTML='<div class="warnbox">读不到设置（后端 :8780 在跑吗？）</div>';
+    });
+  }
+  $("#setSave").onclick=function(){
+    var vals={};
+    $("#settingsBody").querySelectorAll("[data-k]").forEach(function(el){
+      var k=el.getAttribute("data-k");
+      if(el.hasAttribute("data-secret")){
+        // 密钥框永远不回显。空着 = 用户没动它，**不能提交空串**（提交了就把 config.bat 里配好的抹了）；
+        // 只有点了「清除」才提交空串去删。
+        if(el.value!=="") vals[k]=el.value;
+        else if(el.getAttribute("data-clr")==="1") vals[k]="";
+        return;
+      }
+      vals[k] = (el.type==="checkbox") ? (el.checked?"1":"0") : el.value;
+    });
+    if(!Object.keys(vals).length) return setMsg("没有可保存的项","bad");
+    setMsg("保存中…");
+    // 一个「保存」管两处：配置项 + 外部工具服务清单（后者只有名字的空行会在后端被丢掉）
+    var pSet=api("/api/settings",{method:"POST",body:JSON.stringify({values:vals})});
+    var list=$("#settingsBody").querySelector(".mcplist");
+    var pMcp=(list && list.hasAttribute("data-loaded"))
+      ? api("/api/mcp",{method:"POST",body:JSON.stringify({action:"save", servers:collectMcp()})})
+      : Promise.resolve(null);            // 那一栏没读出来就别碰它（否则会把清单存成空的）
+    Promise.all([pSet, pMcp]).then(function(rs){
+      var r=rs[0], m=rs[1];
+      if(r && r.ok){
+        var a=(r.applied||[]).length, rt=(r.restart||[]).length;
+        var n=m?((m.tools&&m.tools.servers)||[]).length:0;
+        // 换了密钥/地址就顺带把「现在用哪个模型」写在这儿 —— 探测不成就照实说原因
+        var mdl=r.model?("；模型 "+(r.model.model||"没探到")
+                         +(r.model.error?"（"+r.model.error+"）":"")):"";
+        setMsg("已保存"+(a?"，"+a+" 项当场生效":"")+(rt?"，"+rt+" 项要重启进程才生效":"")
+               +mdl+(n?"；外部工具 "+n+" 个":"")+(m?"":"（外部工具那栏没读到，没动它）") ,"ok");
+        toast("设置已保存"); loadSettings();
+      }else{
+        var errs=(r&&r.errors)||{}, ks=Object.keys(errs);
+        setMsg(ks.length ? ("没保存："+ks.map(function(k){return errs[k];}).join("；")) : "没保存成","bad");
+      }
+    }).catch(function(){ setMsg("保存请求没发出去（后端 :8780 在跑吗？）","bad"); });
+  };
+
+  $("#settingsBtn").onclick=function(){ open("#mSettings"); loadSettings(); };
+  $("#newSess").onclick=newSidStart;
+  /* 首屏那几个示例问句：点一下填进输入框（**不**直接发 —— 一题要爬几分钟, 先让人看一眼再决定） */
+  (function(){
+    var EG=["原神现在的社区氛围怎么样？","鸣潮这版本玩家在骂什么？","绝区零的口碑和开服比变了吗？"];
+    var box=$("#egBox"), h="";
+    EG.forEach(function(q){ h+='<button type="button">'+esc(q)+'</button>'; });
+    box.innerHTML=h;
+    box.querySelectorAll("button").forEach(function(b){
+      b.onclick=function(){ $("#q").value=b.textContent; $("#q").focus(); };
+    });
+  })();
+  $("#clearMem").onclick=function(){
+    // 数字照实报(侧栏那本对话账), 不编: 只报对话数 —— 消息条数前端没有, 就不写
+    $("#clearCnt").textContent=SIDS.length+" 个对话";
+    $("#mSettings").classList.remove("show"); open("#mClear");
+  };
+
+  var asking=false, stopLabel=$("#stop").textContent, pauseLabel=$("#pause").textContent;
+  /* 有题在跑 = 发送键按住 + 「提前停止」「暂停」两枚露脸。几处状态永远一起改, 免得出现
+     "能点按钮但其实没题在跑"。
+     发送键**只变灰、不换字**: 那是个 34px 的圆, 塞不下"爬取中…"这种词, 字会溢出圆圈糊在旁边的按钮上。 */
+  function setAsking(on){
+    asking=on;
+    $("#send").disabled=on;
+    $("#stop").classList.toggle("show",on);
+    $("#pause").classList.toggle("show",on);
+    $("#stop").disabled=false; $("#stop").textContent=stopLabel;
+    $("#pause").disabled=false; $("#pause").textContent=pauseLabel;
+  }
+  function pollJob(id, cursor){
+    var t0=Date.now(), n=0;                // cursor = 已经拿到第几条事件, 只往回拿增量
+    cursor=cursor||0;                      // 刷新后接回正在跑的那一题: 从后端说"已经到第几条"接着拿
+    return new Promise(function(resolve){
+      (function tick(){
+        api("/api/job?id="+encodeURIComponent(id)+"&since="+cursor).then(function(j){
+          (j.events||[]).forEach(applyLive);
+          if(typeof j.cursor==="number") cursor=j.cursor;
+          if(j.state==="done"){
+            /* 收口: 实时那块整条撤掉, 换成正式卡片(带引用芯片/统计/轨迹) ——
+               不这么做的话, 页面上会同时留着草稿和正式答案两份文本。 */
+            if(j.ask){ pending=null; live=null; D.asks.push(j.ask); renderAll(); renderSessions(); scrollBottom(); }
+            /* 再跟后端对一次账: 这道题是刷新页面之后接回来的话, D.asks 里还留着它当初那张
+               「没跑完」的卡(build_pending), 只 push 新卡不会把那张旧的挤掉 —— 页面上就成了
+               "真答案旁边挂着一张红卡说这题断了"。后端那边这题已经收口, 不再算没跑完,
+               重新拉一遍历史, 那张旧卡自然就没了。 */
+            refreshHistory();
+            toast("出结果了"); return resolve();
+          }
+          if(j.state==="error"){ toast("这一题报错："+(j.error||"未知")); return resolve(); }
+          if(Date.now()-t0 > 30*60*1000){ toast("等太久了，先停轮询（后端可能还在跑）"); return resolve(); }
+          refreshPending();     // 边收边画: 轮次/爬取起止/正文增量, 每拍只动这一小块
+          scrollFollow();       // 只有读者本来就在底部时才跟着滚
+          /* 刷灯每 4 拍才来一次(/api/status 要挨个去问爬虫服务的登录态, 0.7 秒问一次太密)。
+             排队/冷却/间距那几个数归它刷 —— 不是这边的事件给的, 见 engine._gated 里的说明。 */
+          if(n++ % 4 === 0) refreshStatus();
+          setTimeout(tick, 700);
+        }).catch(function(){ setTimeout(tick, 5000); });
+      })();
+    });
+  }
+  $("#send").onclick=function(){
+    var v=$("#q").value.trim();
+    if(!v){ toast("先写个问题"); return; }
+    if(asking){ toast("上一题还在跑, 先点「停止」"); return; }
+    ensureSid(v);                      // 在主界面上问第一句: 到这一刻才真开一个对话
+    setAsking(true);
+    pending={q:v, mode:state.mode};   // 首屏撤掉、占位卡顶上 —— 这几分钟里页面上得有东西在动
+    liveReset();                       // 实时画面从零开始(上一题的那些行不能留到这一题)
+    renderAll(); scrollBottom();
+    $("#q").value="";
+    toast("已开始取样本");
+    api("/api/ask",{method:"POST",body:JSON.stringify({question:v,mode:state.mode,session:SID,
+                                                       ratio:state.ratio})})
+      .then(function(r){
+        /* 429 = 这个对话已经有一题在跑(多半是刚刷新过、后端那题还活着): 别当成失败,
+           把那一题接回来接着看。*/
+        if(r.__status===429){ toast("这个对话有一题还在跑，接回那一题"); return attachRunning(); }
+        if(r.__status!==202){ throw new Error(r.error||("HTTP "+r.__status)); }
+        return pollJob(r.job);
+      })
+      .catch(function(e){ toast("这一题没跑成："+e.message); })
+      .then(function(){ setAsking(false); pending=null; live=null;
+                        renderAll(); sidRemember();
+                        refreshSessions();     // 暂停出一道题后, 侧栏那个"搁着几道"的小记号要跟上
+                        refreshStatus(); });   // 跑完了: 占位卡撤掉, 把「正在使用」收回正常
+  };
+  /* 「提前停止」：只发一个信号, 后端在下一个安全点收口。**不当作失败** —— 已经取到的样本会落库,
+     答案照样出, 只是短一些、并标明"提前停止"。所以这里不停轮询, 照常等那一题收口。 */
+  $("#stop").onclick=function(){
+    if(!asking) return;
+    var lbl=$("#stop").textContent;
+    $("#stop").disabled=true; $("#stop").textContent="停…";
+    api("/api/cancel",{method:"POST",body:JSON.stringify({session:SID})}).then(function(r){
+      if(r.__status!==200 || !r.ok){
+        $("#stop").disabled=false; $("#stop").textContent=lbl;
+        toast(r.error||("停止没发出去：HTTP "+r.__status));
+        return;
+      }
+      toast(r.note||"已发出停止信号");
+    }).catch(function(e){
+      $("#stop").disabled=false; $("#stop").textContent=lbl;
+      toast("停止没发出去："+e.message);
+    });
+  };
+  /* 「暂停」：同样只发一个信号。与「提前停止」的区别是后端**不出答案** —— 这题挂起来等「继续」,
+     所以这里同样不停轮询: 得等后端把这一跑收干净(落那条暂停记录), 卡片才会变成"已暂停"那张。
+     不在这儿当场撤卡片: 引擎还没停手(手上那次抓取要跑完), 当场撤掉就看不见它到底停没停。 */
+  $("#pause").onclick=function(){
+    if(!asking) return;
+    var lbl=$("#pause").textContent;
+    $("#pause").disabled=true; $("#pause").textContent="…";
+    api("/api/pause",{method:"POST",body:JSON.stringify({session:SID})}).then(function(r){
+      if(r.__status!==200 || !r.ok){
+        $("#pause").disabled=false; $("#pause").textContent=lbl;
+        toast(r.error||("暂停没发出去：HTTP "+r.__status));
+        return;
+      }
+      toast(r.note||"已发出暂停信号");
+    }).catch(function(e){
+      $("#pause").disabled=false; $("#pause").textContent=lbl;
+      toast("暂停没发出去："+e.message);
+    });
+  };
+  $("#q").addEventListener("keydown",function(e){
+    if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("#send").click(); }
+  });
+  /* ---------- bili 扫码（真链路：后端起码 → 页面轮询 → 灯转绿） ---------- */
+  var qrTimer=null, qrSeq=-1;
+  function qrStop(){ if(qrTimer){ clearInterval(qrTimer); qrTimer=null; } }
+  function qrShow(){
+    var box=$("#qrBox");
+    qrSeq=-1;
+    box.innerHTML='<img id="qrImg" alt="bilibili 登录二维码" '+
+                  'style="width:100%;height:100%;object-fit:contain;border-radius:6px">';
+    $("#qrState").textContent="正在取码…";
+    /* 带上会话号: 冷却按会话算 —— 后端在冷却期内会**直接挡下**(连爬虫都不拉起来)。
+       挡下来那条不是"取码失败", 是一句说清原因和还要多久的人话, 照原样摆出来。 */
+    api("/api/login/bili",{method:"POST",body:JSON.stringify({session:SID})}).then(function(r){
+      if(r.__status!==200 || r.error){
+        $("#qrState").textContent=r.error||("取码失败：HTTP "+r.__status);
+        refreshStatus();          // 顺手刷一下: 灯那边也该照实显示"冷却中"
+        return;
+      }
+      $("#qrState").textContent="正在取码…";
+      qrPoll();   // 码一出来 seq 就变，那时再去取图（免得空取一次等半天）
+    });
+  }
+  function qrPoll(){
+    qrStop();
+    qrTimer=setInterval(function(){
+      api("/api/login/bili/state").then(function(s){
+        var st=s.state||"unknown";
+        // 服务端每换一版码 seq 就 +1 —— 跟着它重取图，别让用户对着过期码扫
+        if(typeof s.seq==="number" && s.seq!==qrSeq){
+          qrSeq=s.seq;
+          if(s.seq>0 && $("#qrImg")) $("#qrImg").src="/api/login/bili/qr?t="+Date.now();
+        }
+        if(st==="ok"){
+          qrStop(); $("#qrState").textContent="登录态已恢复";
+          toast("bilibili 登录态已恢复"); refreshStatus();
+          setTimeout(function(){ $("#mBili").classList.remove("show"); },700);
+        }else if(st==="scanned"){
+          $("#qrState").textContent="已扫码，确认中…";
+        }else if(st==="waiting"){
+          $("#qrState").textContent="等待扫码…";
+        }else if(st==="error"){
+          qrStop(); $("#qrState").textContent=s.error||"取码失败";
+        }else if(s.error){
+          // 服务中途挂了/拿不到: 如实显示, 但不停止轮询 —— 服务回来了自己会接上
+          $("#qrState").textContent="取不到状态："+s.error;
+        }else{
+          $("#qrState").textContent="正在取码…";
+        }
+      }).catch(function(){});
+    },2000);
+  }
+  /* ---------- NGA 扫码（同一条链：后端取码 -> 页面轮询 -> 灯转绿；码由 NGA 页面现画成 data URI） ---------- */
+  var ngaTimer=null, ngaSeq=-1;
+  function ngaQrStop(){ if(ngaTimer){ clearInterval(ngaTimer); ngaTimer=null; } }
+  function ngaQrShow(){
+    var box=$("#ngaQrBox");
+    ngaSeq=-1;
+    box.innerHTML='<img id="ngaQrImg" alt="NGA 登录二维码" '+
+                  'style="width:100%;height:100%;object-fit:contain;border-radius:6px">';
+    $("#ngaQrState").textContent="正在取码…";
+    api("/api/login/nga/qr",{method:"POST",body:JSON.stringify({session:SID})}).then(function(r){
+      if(r.__status!==200 || r.error){
+        $("#ngaQrState").textContent=r.error||("取码失败：HTTP "+r.__status);   // 冷却挡回来的是人话, 原样摆
+        refreshStatus();
+        return;
+      }
+      ngaQrPoll();
+    });
+  }
+  function ngaQrPoll(){
+    ngaQrStop();
+    ngaTimer=setInterval(function(){
+      api("/api/login/nga/state").then(function(s){
+        var st=s.state||"unknown";
+        // 码换了才换图（NGA 的码就是 data URI, 跟着状态一起回来的）
+        if(typeof s.seq==="number" && s.seq!==ngaSeq){
+          ngaSeq=s.seq;
+          if(s.png && $("#ngaQrImg")) $("#ngaQrImg").src=s.png;
+        }
+        if(st==="ok"){
+          ngaQrStop(); $("#ngaQrState").textContent="登录态已恢复";
+          toast("NGA 登录态已恢复"); refreshStatus();
+          setTimeout(function(){ $("#mNga").classList.remove("show"); },700);
+        }else if(st==="scanned"){
+          $("#ngaQrState").textContent="扫到了，正在校验…";
+        }else if(st==="error"){
+          $("#ngaQrState").textContent="没成："+(s.err||"未知原因");
+        }else if(s.error){
+          // 服务中途挂了/拿不到: 如实显示, 但不停止轮询 —— 服务回来了自己会接上
+          $("#ngaQrState").textContent="取不到状态："+s.error;
+        }else{
+          $("#ngaQrState").textContent="等待扫码…";
+        }
+      }).catch(function(){});
+    },2000);
+  }
+  $("#qrDone").onclick=function(){
+    api("/api/login/bili/state").then(function(s){
+      var ok=(s.state==="ok")||(s.login==="ok");
+      if(ok){ qrStop(); toast("bilibili 登录态已恢复"); refreshStatus(); $("#mBili").classList.remove("show"); }
+      else { toast("还没认到登录态 —— 手机上要点「确认登录」"); }
+    }).catch(function(e){ toast("查状态失败："+e.message); });
+  };
+  $("#ngaRecheck").onclick=function(){
+    $("#ngaRecheck").disabled=true;
+    api("/api/login/nga",{method:"POST",body:JSON.stringify({session:SID})}).then(function(r){
+      if(r && r.error){ toast(r.error); return refreshStatus(); }   // 冷却期被挡下: 照实说原因
+      toast((r && r.login==="ok") ? "NGA 凭据校验通过" : "NGA 还是没登录，检查 config.json 里的 cookie");
+      if(r && r.login==="ok") ngaQrStop();
+      return refreshStatus();
+    }).catch(function(e){ toast("校验失败："+e.message); })
+      .then(function(){ $("#ngaRecheck").disabled=false; $("#mNga").classList.remove("show"); });
+  };
+  $("#clearInput").oninput=function(){
+    $("#clearGo").disabled = (this.value.trim()!=="清除对话记忆");
+  };
+  $("#clearGo").onclick=function(){ toast("清除记忆暂未开放"); };
+
+  /* ---------- 启动 ---------- */
+  paintEmpty();                    // 先摆首屏(不等接口回来 —— 后端没起也该看到这一页)
+  renderSessions();                // 侧栏先画本浏览器开过的那些(纯本地, 不等后端)
+  refreshSessions();               // 再用后端那份补齐(清过站点数据/换台机器打开也找得回来)
+  refreshStatus();                 // 两盏灯 = 后端问爬虫拿的真值
+  refreshHistory();                // 本对话已问过的题(后端从记忆库读)
+  attachRunning();                 // 上一题还没跑完就刷新过? 接回来, 别让它凭空消失
+  paintRatio();
+  setInterval(refreshStatus, 30000);   // 爬虫状态每 30 秒自己刷一次
+})();
+</script>
+</body>
+</html>

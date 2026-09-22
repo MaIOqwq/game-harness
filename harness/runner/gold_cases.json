@@ -1,0 +1,174 @@
+{
+  "_comment": "黄金回放 case 集(M1.2a)。scope 对应 harness/data/flow/*.jsonl 里一条真实流水; db 是 harness/data/ 下标定库(observation/crawl_run 真源)。evalgold 逐 case 跑 C1-C4, 默认全部须过; expect_fail 列 = 已知弱项, 该 check 期望失败且不计阻塞。case 全部取自真实 live 标定记录(2026-09-08 bigfix / 09-09 bngaonly·ngafix / 09-10 认证 cert-h1·h2·fix·q9), 无任何伪造注入。",
+  "pending_live": [
+    {
+      "name": "崩铁-本版本强度膨胀(fresh, 待 live 录得后入 cases)",
+      "q_tpl": "崩坏星穹铁道·本版本 强度膨胀/老角色退场 类话题(用户指认可当黄金案例)",
+      "scope_tpl": "exp:calib:<tag>:qN (tag=本次 live 标定运行标)",
+      "expect": "strict(引原文+结论在; 若真无集中证据须 abstain 措辞)",
+      "note": "用户 2026-09-09 拍: 无现成黄金案例, 拿崩铁本版本强度膨胀话题顶替。待 D6 约真跑窗口录得 flow+DB 后登记进 cases。"
+    }
+  ],
+  "cases": [
+    {
+      "name": "bigfix-q1-金铲铲平衡",
+      "scope": "exp:calib:bigfix-20260908:q1",
+      "db": "calib_bigfix_20260908.db",
+      "kind": "expect_pass",
+      "game": "金铲铲之战",
+      "question": "金铲铲最近这个版本的平衡被骂吗",
+      "expect_fail": [],
+      "note": "快速档, 10 引用, 结论明确: 德玛西亚体系(三星盖伦/金钥匙)争议焦点。"
+    },
+    {
+      "name": "bigfix-q2-明日方舟长草产能",
+      "scope": "exp:calib:bigfix-20260908:q2",
+      "db": "calib_bigfix_20260908.db",
+      "kind": "expect_pass",
+      "game": "明日方舟",
+      "question": "明日方舟最近长草/产能/复刻的抱怨多吗",
+      "expect_fail": [],
+      "note": "精准档, 5 引用, 边引边避: 不足以坐实抱怨多, 但有新内容在跑的证据。"
+    },
+    {
+      "name": "bigfix-q3-绝区零驻场机制-abstain",
+      "scope": "exp:calib:bigfix-20260908:q3",
+      "db": "calib_bigfix_20260908.db",
+      "kind": "expect_pass",
+      "game": "绝区零",
+      "question": "绝区零新角色不驻场/记录伤害机制",
+      "expect_fail": [],
+      "note": "无样本诚实避答(0 引用 + 证据不足以措辞): C3 应空转放行, 验证 abstain 纪律。"
+    },
+    {
+      "name": "bigfix-q4-崩铁立绘抄袭",
+      "scope": "exp:calib:bigfix-20260908:q4",
+      "db": "calib_bigfix_20260908.db",
+      "kind": "expect_pass",
+      "game": "崩坏星穹铁道",
+      "question": "崩铁角色被指抄袭/借鉴立绘的争议",
+      "expect_fail": [],
+      "note": "精准档, 6 引用, 引两极态度再避具体角色立绘争议。"
+    },
+    {
+      "name": "bngaonly-q2-崩铁立绘(NGA-only补跑)",
+      "scope": "exp:calib:bngaonly-20260909:q2",
+      "db": "calib_bngaonly_20260909.db",
+      "kind": "expect_pass",
+      "game": "崩坏星穹铁道",
+      "question": "崩铁角色被指抄袭/借鉴立绘的争议",
+      "expect_fail": [],
+      "note": "09-09 NGA-only 补跑, 10 引用, 结论同为边引边避。"
+    },
+    {
+      "name": "ngafix-q1-明日方舟长草产能(09-09)",
+      "scope": "exp:calib:ngafix-20260909:q1",
+      "db": "calib_ngafix_20260909.db",
+      "kind": "expect_pass",
+      "game": "明日方舟",
+      "question": "明日方舟最近长草/产能/复刻的抱怨多吗",
+      "expect_fail": [],
+      "note": "09-09 NGA 两段式改后跑, 18 引用, 结论强: 抱怨存在但风向分裂。"
+    },
+    {
+      "name": "bngaonly-q1-绝区零驻场机制-实指0引",
+      "scope": "exp:calib:bngaonly-20260909:q1",
+      "db": "calib_bngaonly_20260909.db",
+      "kind": "known_issue",
+      "game": "绝区零",
+      "question": "绝区零新角色不驻场/记录伤害机制",
+      "expect_fail": ["c3"],
+      "note": "实指强结论(蕾米三体人/2命起步)却 0 引用 -> C3 应失败, 记录为引用纪律弱项, 待 M1.3 engine 收口校验缓解。"
+    },
+    {
+      "name": "cert-h1-q1-鸣潮深塔水温",
+      "scope": "exp:calib:calib-h1-20260910:q1",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "鸣潮",
+      "question": "鸣潮这期深塔被说\"水温偏高\"，社区觉得是真的数值膨胀，还是被夸大了？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第一批, 精准档, 29 引用全对回本 scope。双面判定: 真膨胀 + 极端说法被指夸大; 主动标 NGA 样本不足。"
+    },
+    {
+      "name": "cert-h1-q3-绝区零蕾米埃尔膨胀",
+      "scope": "exp:calib:calib-h1-20260910:q3",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "绝区零",
+      "question": "绝区零新角色蕾米埃尔被说\"大膨胀时代来了\"，社区怎么看它的机制和强度？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第一批, 精准档, 31 引用。把\"大膨胀时代\"坐实为单篇机制帖的提法(不跟风), 另标 B 站侧针对性样本不足。"
+    },
+    {
+      "name": "cert-h1-q4-崩铁姬子sp风评",
+      "scope": "exp:calib:calib-h1-20260910:q4",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "崩坏星穹铁道",
+      "question": "崩铁姬子sp最近在社区是什么风评？玩家主要在吵什么？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第一批, 快速档, 12 引用。多条 sarcasm=1 被正确标注为阴阳语气; 明说立绘/剧情样本未覆盖。"
+    },
+    {
+      "name": "cert-h2-q1-终末地日常肝度",
+      "scope": "exp:calib:calib-h2-20260910:q1",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "明日方舟终末地",
+      "question": "明日方舟终末地最近的日常是不是越来越肝？玩家主要在抱怨哪些养成负担？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第二批, 精准档, 39 引用。修正了提问预设(肝度经优化后不算重, 真负担在装备系统)。"
+    },
+    {
+      "name": "cert-h2-q2-终末地数值对比本家-abstain",
+      "scope": "exp:calib:calib-h2-20260910:q2",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "明日方舟终末地",
+      "question": "明日方舟终末地的数值和养成是不是比本家明日方舟更难懂？两边玩家怎么比？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第二批, 精准档, 21 引用, 诚实避答: 无直接对比数值门槛的样本, 两边难点不同维度。"
+    },
+    {
+      "name": "cert-h2-q4-王者荣耀宽泛",
+      "scope": "exp:calib:calib-h2-20260910:q4",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "王者荣耀",
+      "question": "王者荣耀现在社区整体氛围怎么样？玩家主要在聊什么？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第二批, 快速档, 23 引用。宽泛无焦点题: 自行收敛出\"强度/上分主线 + 匹配机制负面焦点\"。"
+    },
+    {
+      "name": "cert-h1-q2-鸣潮卡池小巧思(重跑净版)",
+      "scope": "exp:calib:calib-fix-20260910:q1",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "鸣潮",
+      "question": "鸣潮卡池被吐槽\"小巧思太多\"，这个说法到底指什么？玩家为什么吵成两派？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第一批 q2 因打分服务被内存回收杀掉而整批降级关键词兜底, 此题重跑净版。17 引用全对回本 scope。"
+    },
+    {
+      "name": "cert-h2-q3-明日方舟夏活限定强度(重跑净版)",
+      "scope": "exp:calib:calib-fix-20260910:q2",
+      "db": "calib_20260910.db",
+      "kind": "expect_pass",
+      "game": "明日方舟",
+      "question": "今年夏活的限定和陪跑，强度跟去年星熊、遥那批比怎么样？社区怎么看这个变化？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证第二批 q3 同因兜底重跑净版。34 引用全对回本 scope。"
+    },
+    {
+      "name": "cert-q9-崩铁节奏涨落(自基线爆发-硬尾)",
+      "scope": "exp:calib:cert-q9-20260910:q1",
+      "db": "calib_q9_20260910.db",
+      "kind": "expect_pass",
+      "game": "崩坏星穹铁道",
+      "question": "崩铁这版本节奏讨论度什么时候上涨，又什么时候下降的？",
+      "expect_fail": [],
+      "note": "2026-09-10 认证题单 v2 第 9 题(自基线爆发, 硬尾), 精准档, 19 引用全对回本 scope。用存档发布时间给出可辨识锚点(2026-09 上旬高点 / 2025-05 底一波), 明说下降时点无证据、NGA 侧仅约 14% 覆盖不足; 部分正面措辞按 sarcasm=1 标为反讽不采信。"
+    }
+  ]
+}

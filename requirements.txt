@@ -1,0 +1,20 @@
+# opinion-agent harness 依赖说明
+#
+# harness/ 核心是**纯 Python 标准库**实现（sqlite3 / json / re / glob / urllib 等），
+# 问答、爬取编排、标定、自测与 guard 都不需要第三方包。
+#
+# 两个第三方项，都不是可选的"锦上添花"，缺了会有功能整块不可用：
+#
+#   fpdf2      导出 PDF（harness/pdfout.py）
+#              答案要能被下载成一份纸。**必须装** —— 不装则 /api/pdf 直接报错。
+#              为什么不用浏览器打印: 演示机这类 Linux 服务器上往往一个中文字体都没有,
+#              浏览器会拿 Helvetica 排中文, 排出来满纸方框。fpdf2 自己嵌字, 不挑机器。
+#              字体随包带（harness/assets/Noto Sans SC 子集, OFL-1.1 可分发）。
+#
+#   tiktoken   精确统计 cl100k token 数（harness/context.py 进模型前的窗口监控）
+#              可选。不装则按 len(text)/1.7 估算，功能不受影响。
+#
+# 其余潜在第三方项（如 labeler/ 或 nlp/ 侧若引入）另行声明，勿并入本文件污染 harness 纯标准库定位。
+
+fpdf2>=2.8.0
+tiktoken>=0.5.0
