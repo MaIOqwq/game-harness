@@ -165,7 +165,14 @@ class BilibiliClient(AbstractApiClient, ProxyRefreshMixin):
         Get the latest img_key and sub_key
         :return:
         """
-        local_storage = await self.playwright_page.evaluate("() => window.localStorage")
+        try:
+            local_storage = await self.playwright_page.evaluate("() => window.localStorage")
+        except Exception as e:
+            # 浏览器页死掉(被关/崩)是常驻服务里真会发生的。签名要 wbi key, 不接住的话每一条请求
+            # 都跟着抛 -> 爬链全断; 而进程还活着, systemd 的 Restart=always 永远不触发, 变成
+            # "服务在跑但一直报错"。退回下面那支 HTTP 取 key: 每条多一次 nav, 但爬链不断。
+            utils.logger.warning(f"[BilibiliClient.get_wbi_keys] 浏览器页不可用({e}), 改走 HTTP 取 wbi key")
+            local_storage = {}
         wbi_img_urls = local_storage.get("wbi_img_urls", "")
         if not wbi_img_urls:
             img_url_from_storage = local_storage.get("wbi_img_url")
