@@ -34,7 +34,7 @@
 - `harness/runner/` CLI 入口；`harness/data/` 会话记忆真源（SQLite + `flow/*.jsonl` 流水）
 - `_syscheck/` 随包的离线自检（`verify_*`，被 `harness.test` 聚合）；源码仓库那侧的 `_tmp/` 是开发期脚本，不随产品走
 - `docs/` PRD/架构/记忆笔记；`crawlers/`（爬虫副本工作区）、`nlp/`（评测工具链）、`labeler/`
-- 说明：当前未 git 化（用户拍暂缓），文件仅落盘；发布物去敏后才考虑进 GitHub
+- 说明：**本树就是对外发布的那一棵** —— 已去敏、已 git 化，公开在 `https://github.com/MaIOqwq/game-harness`
 
 ## 怎么跑
 
