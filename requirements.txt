@@ -1,4 +1,4 @@
-# opinion-agent harness 依赖说明
+# game-harness 依赖说明
 #
 # harness/ 核心是**纯 Python 标准库**实现（sqlite3 / json / re / glob / urllib 等），
 # 问答、爬取编排、标定、自测与 guard 都不需要第三方包。

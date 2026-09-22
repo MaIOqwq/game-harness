@@ -1,4 +1,4 @@
-# CLAUDE.md — 游戏社区问答 Agent（opinion-agent）
+# CLAUDE.md — 游戏社区问答 Agent（game-harness）
 
 本仓库 = 中文问句 → 冷启动判断 → 按需真爬社区（NGA+bili，关键词）→ 自动存档 → 检索合成 → **引原文作答**（`[id=N]` + 明说不确定性 + 末行「结论:」）的 harness。DeepSeek function-calling 循环在 `harness/engine.py`。
 
