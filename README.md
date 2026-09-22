@@ -5,6 +5,23 @@
 定位：**问答类** Agent，舆情纵深是旗舰（非毕设那套「监测类」大屏）；答案口径 = 社区当下共识，
 不是攻略站权威，必须 cite + 标滞后。正源：`CLAUDE.md` → `PROJECT_MEMORY.md` → `PLAN.md §10` → `docs/ARCHITECTURE.md`。
 
+## 怎么装、怎么跑
+
+两条路，选一条即可，**细节见 `INSTALL.md`**：
+
+| 路子 | 起法 | 机器上要先有什么 |
+|---|---|---|
+| **Docker**（一条命令起全套） | 建个 `.env` 填 `DEEPSEEK_API_KEY`，然后 `docker compose up -d --build` | Docker Desktop。Python、两个浏览器内核都在镜像里，不用自己装 |
+| 本机 Python | 双击 `setup.bat`，再 `start.bat` | Python 3.11 |
+
+起完打开 **`http://127.0.0.1:8780`**。
+
+两个爬虫**不在这个包里** —— 它们是独立仓库（`game-harness-crawler-nga` / `-bili`），
+`setup.bat` 会自己取到 `crawlers\` 下（Docker 那条路由镜像在构建时 clone）。所以**装的时候要能上 GitHub**。
+
+> **第一次用，先点灯旁边的「去修复」扫码登录，再问题。** 两个平台都要登录态才有量：不登录时 NGA 基本 0 命中，
+> bilibili 慢到会被判定「这条腿不通」，答案会如实告诉你「无有效样本」—— 那是没料，不是坏了。
+
 ## 一句话卖点
 `harness/` 核心是**纯 Python 标准库**实现（sqlite3 / json / re / urllib…），
 零第三方依赖即可跑 demo、标定、自测与 guard。第三方依赖就 `requirements.txt` 里那两条：
@@ -33,8 +50,14 @@
 - `harness/webapp.py` 网页后端（8780）+ `harness/webview.py`（把一题翻成页面认的形状）
 - `harness/runner/` CLI 入口；`harness/data/` 会话记忆真源（SQLite + `flow/*.jsonl` 流水）
 - `_syscheck/` 随包的离线自检（`verify_*`，被 `harness.test` 聚合）；源码仓库那侧的 `_tmp/` 是开发期脚本，不随产品走
-- `docs/` PRD/架构/记忆笔记；`crawlers/`（爬虫副本工作区）、`nlp/`（评测工具链）、`labeler/`
-- 说明：**本树就是对外发布的那一棵** —— 已去敏、已 git 化，公开在 `https://github.com/MaIOqwq/game-harness`
+- `docs/` PRD/架构/记忆笔记；`nlp/`（评测工具链）、`labeler/`
+- `crawlers/` **装完才有** —— 两个爬虫是独立仓库，`setup.bat`（调 `fetch_crawlers.bat`）取到这里；
+  本树在开发机上那份是「111 侧爬虫副本工作区」，不随发布物走
+- `Dockerfile` / `.dockerignore` / `compose.yaml` —— 容器那条路。**一个容器跑三个服务**（网页后端 + 两个爬虫）：
+  爬虫把 `127.0.0.1` 写死在代码里，网页后端还要跟它们同机才能按需拉起，拆开反而要改爬虫代码。
+  对外只 `EXPOSE 8780`；四只卷分别存记忆库、bili 登录态（浏览器用户目录）、NGA 配置、日志。
+  两个爬虫同样不在镜像上下文里（`.dockerignore` 整目录排掉），由 Dockerfile 构建时 `git clone` 进来。
+- 说明：本树只落盘、不作 git 仓库；对外的去敏发布版在公开仓 `MaIOqwq/game-harness`
 
 ## 怎么跑
 
@@ -47,7 +70,7 @@ python -m harness.runner --live
 
 # 3) 一键自测 —— guard(数据层 append-only 扫描) + 随包的离线自检(_syscheck/); 退出码 0/1
 python -m harness.test                   # 纯标准库、无网络
-python -m harness.test --server          # 追加服务器门(需远端隧道 + LoRA token + DEEPSEEK 在位)
+python -m harness.test --server          # 追加服务器门(需 111 隧道 + LoRA token + DEEPSEEK 在位)
 python -m harness.test --list            # 列分组与每脚本一句说明
 
 # 4) 数据层只增守卫(单独跑)
@@ -65,8 +88,8 @@ python -m harness.runner.observe --help
 
 ## 凭证纪律（铁律级，别违反）
 - **明文 cookie / token / 密码绝不进 chat、log、源码、git**；需要时只引用"环境里已存在"。
-- bili 登录态 = 部署服务器上唯一 owner，**绝不拷到本地/仓库**。
-- X-Token 只在本机运行着的机器上读；NGA config cookies 只在部署服务器上读。
+- bili 登录态 = 111 服务器上唯一 owner，**绝不拷到本地/仓库**。
+- X-Token 只在本机运行着的机器上读；NGA config cookies 只在 111 上读。
 - `DEEPSEEK_API_KEY` 可以**在页面上填** —— 那就落在**本机** `secrets.json`（与 `settings.json` 分开存）；
   页面上**永远只显示「已配置 / 未配置」，明文不回传**；**明文也不写进 `settings.json`**。没在页面填时仍按环境变量。
   发布物一律先脱敏。
@@ -83,5 +106,5 @@ python -m harness.runner.observe --help
 2. 黄金回放层（进行中 M1.2）：录真题 flow + 对应标定 DB → 逐 case 断言「结论在 / 引用对回本 scope 观察 / 诚实无据放行」。
 3. live 认证层（M1.1）：标准题单 + 参数 + 判据，真网络窗口跑 —— 流程与题单见 `docs/CERTIFY.md`。
 
-详细铁律（毕设原版一行不动、live 每题间隔 5-10 分钟、动服务器前先评估 OOM、单进程爬虫等）
+详细铁律（毕设原版一行不动、live 每题间隔 5-10 分钟、动 111/152 前先评估 OOM、单进程爬虫等）
 见 `PROJECT_MEMORY.md §5` 与 `docs/mem/user-habits.md`。

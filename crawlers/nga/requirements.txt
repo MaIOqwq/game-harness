@@ -1,5 +1,0 @@
-# NGA 爬虫服务要的依赖 —— 就这两个。
-# (nga_crawler_playwright.py 里原来还有 confluent-kafka / pymysql 两个 import, 但那是
-#  Kafka/MySQL 出口的腿, 本部署是关着的; 已经改成可选 import, 不装也能起。)
-playwright>=1.45.0
-beautifulsoup4>=4.12.0

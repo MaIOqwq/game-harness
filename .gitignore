@@ -4,6 +4,11 @@ logs/
 out/
 _scratch/
 
+# 两个爬虫是**独立仓库**，由 setup.bat 自己取到 crawlers/ 下 —— 本仓不含、也不该含它们。
+# 更要紧的是：取回来跑过之后，crawlers/ 里就有登录态了（bili 的 browser_data/、NGA 的 config.json），
+# 一条 crawlers/ 挡掉最省心。
+crawlers/
+
 # 凭证与登录态 —— 绝不进仓库
 harness.env
 .env
